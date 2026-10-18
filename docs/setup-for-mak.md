@@ -22,6 +22,15 @@ That folder is outside the code, so the key never goes into git. Apple lets you 
 
 In App Store Connect, open Karaki, then App Information. Under General Information there is "Apple ID", a number of about ten digits. Send it in the chat. It goes into app/eas.json as ascAppId so every new build goes to TestFlight by itself.
 
+### 2b. The very first build (once)
+
+The first build of a new app needs a provisioning profile, and Expo makes it only when someone answers its questions. In PowerShell:
+
+    cd "C:\Users\mahmo\OneDrive - Be Smart Me\Karaki APP\family-app\app"
+    .\ios-build.ps1 -Interactive
+
+Answer yes to each question (use the existing distribution certificate, make a new provisioning profile). It uses the App Store Connect key, so it should not ask for your Apple password; if it does, sign in with your Apple developer account. The build then runs in Expo's cloud for about 15 to 25 minutes and goes to TestFlight by itself. Every later build is just `.\ios-build.ps1`, and Claude can run those.
+
 ### 3. Let the family into TestFlight
 
 When a build shows in App Store Connect under TestFlight:
