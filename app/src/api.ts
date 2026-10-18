@@ -21,7 +21,7 @@ export type CallRecord = {
   id: string; chatId: number; kind: 'voice' | 'video'; startedBy: number; createdAt: number;
   answeredAt: number | null; endedAt: number | null; endReason: string | null; ringUntil: number; members: CallMember[];
 };
-export type Invite = { id: number; code?: string; link?: string; nameHint: string | null; isAdmin?: boolean; expiresAt: number };
+export type Invite = { id: number; code?: string; link?: string; appLink?: string; nameHint: string | null; isAdmin?: boolean; expiresAt: number; forMember?: number | null };
 
 const SERVER_KEY = 'family.server';
 let serverUrl: string = (Constants.expoConfig?.extra as { serverUrl?: string } | undefined)?.serverUrl || 'https://karaki.besmart-me.com';
@@ -104,7 +104,7 @@ export function sayError(e: unknown): string {
     invite_required: 'You need an invite code the first time.',
     bad_token: 'Apple sign in did not go through. Please try again.',
     bad_nonce: 'Apple sign in did not go through. Please try again.',
-    removed: 'This Apple ID is no longer part of the family.',
+    removed: 'This person is no longer part of the family.',
     too_many_tries: 'Too many tries. Wait a few minutes and try again.',
     file_too_big: 'That file is too big to send.',
     voice_too_long: 'That voice note is too long.',

@@ -134,15 +134,24 @@ export function makeFamily({ db, config, hub, push = null, log = console, now = 
   }
 
   // ---------- invites ----------
-  function createInvite(byMember, { nameHint, isAdmin } = {}) {
+  const joinLink = (code) => `${String(config.publicUrl || '').replace(/\/+$/, '')}/join/${code}`;
+
+  // forMember: a sign in code for someone already in the family (a new phone, a reinstall)
+  function createInvite(byMember, { nameHint, isAdmin, forMember } = {}) {
     if (byMember) requireAdmin(byMember);
+    let target = null;
+    if (forMember !== undefined && forMember !== null) target = activeMember(Number(forMember));
     const code = newInviteCode();
     const t = now();
     const expiresAt = t + L.inviteDays * 86400_000;
-    const r = run(db, `INSERT INTO invites (code_hash, created_by, name_hint, is_admin, created_at, expires_at)
-                       VALUES (?, ?, ?, ?, ?, ?)`,
-      sha256Hex(normaliseInviteCode(code)), byMember ? byMember.id : null, cleanText(nameHint, L.nameChars) || null, isAdmin ? 1 : 0, t, expiresAt);
-    return { id: Number(r.lastInsertRowid), code, link: `karaki://join/${code}`, expiresAt, nameHint: cleanText(nameHint, L.nameChars) || null };
+    const hint = target ? target.name : cleanText(nameHint, L.nameChars) || null;
+    const r = run(db, `INSERT INTO invites (code_hash, created_by, name_hint, is_admin, created_at, expires_at, for_member)
+                       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      sha256Hex(normaliseInviteCode(code)), byMember ? byMember.id : null, hint, !target && isAdmin ? 1 : 0, t, expiresAt, target ? target.id : null);
+    return {
+      id: Number(r.lastInsertRowid), code, link: joinLink(code), appLink: `karaki://join/${code}`,
+      expiresAt, nameHint: hint, forMember: target ? target.id : null,
+    };
   }
 
   function findOpenInvite(code) {
@@ -155,13 +164,16 @@ export function makeFamily({ db, config, hub, push = null, log = console, now = 
     const inv = findOpenInvite(code);
     if (!inv) throw new FamilyError(404, 'invite_invalid');
     const by = inv.created_by ? one(db, 'SELECT name FROM members WHERE id = ?', inv.created_by) : null;
-    return { nameHint: inv.name_hint, invitedBy: by ? by.name : null, expiresAt: inv.expires_at };
+    return { nameHint: inv.name_hint, invitedBy: by ? by.name : null, expiresAt: inv.expires_at, kind: inv.for_member ? 'device' : 'new' };
   }
+
+  // an open invite, for the public join page; says nothing about who is in the family
+  const inviteIsOpen = (code) => !!findOpenInvite(code);
 
   function listInvites(me) {
     requireAdmin(me);
     return all(db, 'SELECT * FROM invites WHERE used_at IS NULL AND revoked_at IS NULL AND expires_at > ? ORDER BY id DESC', now())
-      .map((i) => ({ id: i.id, nameHint: i.name_hint, isAdmin: !!i.is_admin, expiresAt: i.expires_at }));
+      .map((i) => ({ id: i.id, nameHint: i.name_hint, isAdmin: !!i.is_admin, expiresAt: i.expires_at, forMember: i.for_member || null }));
   }
 
   function revokeInvite(me, id) {
@@ -187,6 +199,7 @@ export function makeFamily({ db, config, hub, push = null, log = console, now = 
         if (!inviteCode) throw new FamilyError(409, 'invite_required');
         const inv = findOpenInvite(inviteCode);
         if (!inv) throw new FamilyError(404, 'invite_invalid');
+        if (inv.for_member) return useInvite(inv, { name, deviceLabel });
         const count = one(db, 'SELECT COUNT(*) AS n FROM members').n;
         const finalName = cleanText(name, L.nameChars) || inv.name_hint || 'Family member';
         const r = run(db, 'INSERT INTO members (name, apple_sub, is_admin, color, created_at) VALUES (?, ?, ?, ?, ?)',
@@ -197,6 +210,34 @@ export function makeFamily({ db, config, hub, push = null, log = console, now = 
       }
       return { token: newDevice(member.id, deviceLabel), member: memberOut(member) };
     });
+  }
+
+  // the invite code alone signs this phone in (MAK, 18 Oct 2026: no Apple sign in for the family).
+  // A new member's code makes the member; a sign in code joins the existing member's account.
+  function signInWithCode({ code, name, deviceLabel } = {}) {
+    return tx(db, () => {
+      const inv = findOpenInvite(code);
+      if (!inv) throw new FamilyError(404, 'invite_invalid');
+      return useInvite(inv, { name, deviceLabel });
+    });
+  }
+
+  // inside a transaction: spends the invite and gives back a session for this phone
+  function useInvite(inv, { name, deviceLabel }) {
+    let member;
+    if (inv.for_member) {
+      member = one(db, 'SELECT * FROM members WHERE id = ?', inv.for_member);
+      if (!member || member.removed_at) throw new FamilyError(403, 'removed');
+    } else {
+      const count = one(db, 'SELECT COUNT(*) AS n FROM members').n;
+      const finalName = cleanText(name, L.nameChars) || inv.name_hint || 'Family member';
+      const r = run(db, 'INSERT INTO members (name, apple_sub, is_admin, color, created_at) VALUES (?, NULL, ?, ?, ?)',
+        finalName, inv.is_admin ? 1 : 0, MEMBER_COLORS[count % MEMBER_COLORS.length], now());
+      member = one(db, 'SELECT * FROM members WHERE id = ?', Number(r.lastInsertRowid));
+      queueMicrotask(() => hub.broadcast({ type: 'members', members: listMembers() }));
+    }
+    run(db, 'UPDATE invites SET used_by = ?, used_at = ? WHERE id = ?', member.id, now(), inv.id);
+    return { token: newDevice(member.id, deviceLabel), member: memberOut(member) };
   }
 
   function authenticate(token) {
@@ -559,8 +600,8 @@ export function makeFamily({ db, config, hub, push = null, log = console, now = 
   }
 
   return {
-    memberOut, createInvite, checkInvite, listInvites, revokeInvite,
-    signIn, authenticate, signOut, setPushToken,
+    memberOut, createInvite, checkInvite, inviteIsOpen, listInvites, revokeInvite,
+    signIn, signInWithCode, authenticate, signOut, setPushToken,
     listMembers, renameSelf, removeMember,
     listChats, getChat, openDirect, createGroup, renameGroup, addToGroup, removeFromGroup,
     sendMessage, history, markDelivered, markRead, markAllDelivered, typing,

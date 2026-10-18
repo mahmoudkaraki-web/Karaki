@@ -1,6 +1,6 @@
 // The family: who is in it, your own name, invites (admins), notifications, the server, sign out.
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, Linking, Pressable, ScrollView, Share, Text, View } from 'react-native';
+import { ActionSheetIOS, Alert, Linking, Pressable, ScrollView, Share, Text, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { api, getServerUrl, sayError, type Invite } from '../api';
 import { openDirect, renameMe, signOut, useFamily } from '../store';
@@ -43,10 +43,28 @@ export function Family({ navigation }: ScreenProps<'Family'>) {
     ], 'plain-text');
   }
 
+  // one short line and the join link: the page there installs Karaki and opens it with the code
   function shareInvite(inv: Invite) {
-    void Share.share({
-      message: `You are invited to Karaki, our private family app for messages. Install Karaki, choose "I have an invite code" and type ${inv.code}. Or open ${inv.link}. The code works once and ends on ${fullDate(inv.expiresAt)}.`,
-    });
+    const line = inv.forMember ? 'Your new sign in link for Karaki:' : 'Join our family on Karaki:';
+    void Share.share({ message: `${line} ${inv.link}` });
+  }
+
+  // a new phone or a reinstall: a single use code that signs into this member's own account
+  async function newSignInCode(id: number) {
+    setBusy(true);
+    try {
+      const inv = await api<Invite>('POST', `/members/${id}/signin-code`);
+      setFresh(inv);
+      loadInvites();
+    } catch (e) { Alert.alert('No code made', sayError(e)); } finally { setBusy(false); }
+  }
+
+  function memberMenu(id: number, name: string) {
+    ActionSheetIOS.showActionSheetWithOptions(
+      { title: name, options: ['New sign in code', `Remove ${name} from the family`, 'Cancel'], destructiveButtonIndex: 1, cancelButtonIndex: 2,
+        message: 'A sign in code puts a new or reset iPhone into the same account, with all its chats.' },
+      (i) => { if (i === 0) void newSignInCode(id); if (i === 1) removeMember(id, name); },
+    );
   }
 
   function revoke(inv: Invite) {
@@ -100,8 +118,7 @@ export function Family({ navigation }: ScreenProps<'Family'>) {
             {i ? <Divider inset={space.lg + 36 + space.md} /> : null}
             <Pressable
               style={({ pressed }) => [row, { opacity: pressed ? 0.6 : 1 }]}
-              onPress={() => (m.id === me.id ? changeName() : undefined)}
-              onLongPress={() => (me.isAdmin && m.id !== me.id ? removeMember(m.id, m.name) : undefined)}
+              onPress={() => (m.id === me.id ? changeName() : me.isAdmin ? memberMenu(m.id, m.name) : undefined)}
             >
               <Seal member={m} online={online.includes(m.id)} />
               <View style={{ flex: 1 }}>
@@ -120,7 +137,7 @@ export function Family({ navigation }: ScreenProps<'Family'>) {
           </View>
         ))}
       </View>
-      {me.isAdmin ? <Text style={{ color: c.inkGhost, fontSize: type.caption, marginHorizontal: space.lg, marginTop: space.sm }}>Press and hold someone to remove them from the family.</Text> : null}
+      {me.isAdmin ? <Text style={{ color: c.inkGhost, fontSize: type.caption, marginHorizontal: space.lg, marginTop: space.sm }}>Tap someone for a new sign in code (a new or reset iPhone) or to remove them.</Text> : null}
 
       {me.isAdmin ? (
         <>
@@ -128,12 +145,12 @@ export function Family({ navigation }: ScreenProps<'Family'>) {
           <View style={{ paddingHorizontal: space.lg, gap: space.md }}>
             {fresh ? (
               <View style={{ padding: space.lg, borderRadius: radius.bubble, backgroundColor: c.paper, borderWidth: 1, borderColor: c.hairlineSoft, gap: space.md }}>
-                <Text style={{ color: c.inkSoft, fontSize: type.secondary }}>{fresh.nameHint ? `Code for ${fresh.nameHint}` : 'New invite code'}</Text>
+                <Text style={{ color: c.inkSoft, fontSize: type.secondary }}>{fresh.forMember ? `Sign in code for ${fresh.nameHint}` : fresh.nameHint ? `Invite for ${fresh.nameHint}` : 'New invite'}</Text>
                 <Text selectable style={{ fontFamily: serif.semibold, fontSize: type.display, letterSpacing: 4, color: c.ink }}>{fresh.code}</Text>
                 <Text style={{ color: c.inkFaint, fontSize: type.caption }}>Works once. Ends on {fullDate(fresh.expiresAt)}.</Text>
                 <View style={{ flexDirection: 'row', gap: space.sm }}>
                   <Button small label="Share" icon="square.and.arrow.up" onPress={() => shareInvite(fresh)} />
-                  <Button small kind="quiet" label="Copy code" onPress={() => { void Clipboard.setStringAsync(fresh.code || ''); }} />
+                  <Button small kind="quiet" label="Copy link" onPress={() => { void Clipboard.setStringAsync(fresh.link || fresh.code || ''); }} />
                 </View>
               </View>
             ) : null}

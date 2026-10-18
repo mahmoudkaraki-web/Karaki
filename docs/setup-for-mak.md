@@ -58,8 +58,8 @@ The demo box (20.74.255.57) is frozen until you say the demo is over. Nothing go
 
     `sudo -u karaki node --env-file=.env scripts/invite.js --name MAK --admin`
 
-    It prints a code like K7QX-M2PA. In Karaki on your iPhone: "I have an invite code", type it, Sign in with Apple. You are the first member and the admin.
-11. Invite the family from the app: the people button at the top left, then "Invite someone". Share the code with each of them.
+    It prints a code like K7QX-M2PA and its link. In Karaki on your iPhone: "I have an invite code", type it, Join. You are the first member and the admin. (Already done: your account exists.)
+11. Invite the family from the app, as below.
 
 Port 4100 stays closed to the internet; only Caddy (ports 80 and 443) talks to the world.
 
@@ -75,6 +75,23 @@ The install script and the test stay outside the code, in Karaki APP\relay-setup
 
 Nothing new is needed on developer.apple.com for calls: the same push key (AuthKey_CB........p8) also sends the ringing pushes (VoIP pushes), and the Push Notifications tick on com.besmart.karaki covers them.
 
-### 6. Backups
+### 6. How a family member joins (from build 8)
+
+No Apple sign in, no redeem codes: one link per person.
+
+1. In Karaki: the people button at the top left, then "Invite someone", type their first name, then Share. The message is one line with a link like https://karaki.besmart-me.com/join/K7QX-M2PA. Send it by WhatsApp, iMessage or email.
+2. They open the link on their iPhone. The page has two buttons: "Install Karaki" (it goes to the TestFlight link, later the App Store) and, once installed, "Open Karaki". Open Karaki starts the app with the code already filled in; they check their name and tap Join. That is all.
+3. If the app opens without the code, the page shows the code in large letters with a Copy button; they tap "I have an invite code" and paste or type it.
+4. Each link works once and for 7 days. An old or used link says "This invite has ended. Ask for a new one."
+
+A new iPhone, or Karaki deleted and installed again: in the people screen tap that person, then "New sign in code", and share it the same way. It signs the new phone into the same account, with all their chats. It also works once.
+
+On the box, /opt/karaki/server/.env needs the install link, the TestFlight public link today (App Store Connect, TestFlight, the external group, Public Link), the App Store link later:
+
+    INSTALL_URL=https://testflight.apple.com/join/XXXXXXXX
+
+Change it and run `sudo systemctl restart karaki`; the join page uses the new link at once. The privacy page Apple will ask for later is https://karaki.besmart-me.com/privacy.
+
+### 7. Backups
 
 Everything the family sends lives in /var/lib/karaki on the box (the database file and a media folder). Copying that folder somewhere safe is the whole backup.

@@ -11,6 +11,7 @@ import { makeHub, attachRealtime } from './realtime.js';
 import { makeCalls } from './calls.js';
 import { makeAppleVerifier, AuthError } from './apple.js';
 import { makeApnsSender } from './apns.js';
+import { joinPage, privacyPage } from './pages.js';
 
 const STREAMING = Symbol('streaming'); // a route that answers with a file stream, not JSON
 
@@ -27,7 +28,8 @@ function limiter({ windowMs, max }) {
   };
 }
 
-export function createFamilyServer(config, { appleKeySet, push, voipPush, log = console } = {}) {
+// env: where INSTALL_URL is read, on every request (so a changed .env and a restart is enough)
+export function createFamilyServer(config, { appleKeySet, push, voipPush, log = console, env = process.env } = {}) {
   const db = openDb(config.dataDir);
   const hub = makeHub();
   const pushSender = push !== undefined ? push : makeApnsSender({ ...config.apns, topic: config.bundleId, log });
@@ -71,7 +73,7 @@ export function createFamilyServer(config, { appleKeySet, push, voipPush, log = 
     return next();
   }
 
-  const doorLimit = limiter({ windowMs: 10 * 60_000, max: 30 });
+  const doorLimit = limiter({ windowMs: 10 * 60_000, max: config.limits.doorTries });
 
   app.get('/health', (req, res) => res.json({ ok: true, name: 'family', version: 1 }));
 
@@ -84,7 +86,26 @@ export function createFamilyServer(config, { appleKeySet, push, voipPush, log = 
     return family.signIn(apple, { inviteCode, name, deviceLabel });
   }));
 
+  // the invite code alone: the way the family signs in
+  app.post('/auth/code', doorLimit, wrap((req) => {
+    const { code, name, deviceLabel } = req.body || {};
+    return family.signInWithCode({ code, name, deviceLabel });
+  }));
+
   app.post('/auth/signout', auth, wrap((req) => family.signOut(req.device)));
+
+  // ----- the pages a browser opens: the join link and the privacy page -----
+  const page = (res, html, status = 200) => {
+    res.status(status).set('Content-Type', 'text/html; charset=utf-8')
+      .set('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'")
+      .set('X-Robots-Tag', 'noindex').send(html);
+  };
+  app.get('/join/:code', doorLimit, (req, res) => {
+    const open = family.inviteIsOpen(req.params.code);
+    page(res, joinPage({ code: req.params.code, open, installUrl: env.INSTALL_URL || '' }), open ? 200 : 410);
+  });
+  app.get('/favicon.ico', (req, res) => res.status(204).end());
+  app.get('/privacy', (req, res) => page(res, privacyPage({ contact: env.PRIVACY_CONTACT || 'mahmoud.karaki@besmart-me.com' })));
 
   // ----- me and the family -----
   app.get('/me', auth, wrap((req) => ({ member: family.memberOut(req.me), members: family.listMembers(), unread: family.unreadTotal(req.me.id) })));
@@ -95,6 +116,8 @@ export function createFamilyServer(config, { appleKeySet, push, voipPush, log = 
 
   app.get('/invites', auth, wrap((req) => ({ invites: family.listInvites(req.me) })));
   app.post('/invites', auth, wrap((req) => family.createInvite(req.me, { nameHint: req.body?.nameHint, isAdmin: !!req.body?.isAdmin })));
+  // a new phone or a reinstall: a single use code that signs into this member's own account
+  app.post('/members/:id/signin-code', auth, wrap((req) => family.createInvite(req.me, { forMember: req.params.id })));
   app.delete('/invites/:id', auth, wrap((req) => family.revokeInvite(req.me, req.params.id)));
 
   // ----- chats -----

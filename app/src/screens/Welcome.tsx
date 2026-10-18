@@ -1,21 +1,19 @@
-// The front door: the wordmark, one line, Sign in with Apple, and the way in with an invite.
-// Long press the wordmark to point the app at another server (for testing before it is online).
+// The front door: the wordmark, one line, and the one way in: the invite code.
+// Long press the wordmark to point the app at another server (for testing).
 import React, { useEffect, useState } from 'react';
 import { Alert, Pressable, Text, View } from 'react-native';
-import * as AppleAuthentication from 'expo-apple-authentication';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ApiError, getServerUrl, sayError, setServerUrl } from '../api';
-import { appleSignIn, finishSignIn } from '../signin';
+import { getServerUrl, setServerUrl } from '../api';
 import { serif, space, type, useTheme } from '../theme';
+import { Button } from '../ui';
 import type { ScreenProps } from '../nav';
 
 export function Welcome({ navigation }: ScreenProps<'Welcome'>) {
-  const { c, dark } = useTheme();
+  const { c } = useTheme();
   const insets = useSafeAreaInsets();
-  const [busy, setBusy] = useState(false);
   const [serverUp, setServerUp] = useState<boolean | null>(null);
 
-  // the server may not be running yet (it goes online after the demo freeze): say so plainly
+  // the server may be down for a moment: say so plainly
   async function checkServer() {
     const ctl = new AbortController();
     const t = setTimeout(() => ctl.abort(), 6000);
@@ -29,23 +27,6 @@ export function Welcome({ navigation }: ScreenProps<'Welcome'>) {
     }
   }
   useEffect(() => { void checkServer(); }, []);
-
-  async function signIn() {
-    setBusy(true);
-    try {
-      const apple = await appleSignIn();
-      if (!apple) return;
-      try {
-        await finishSignIn(apple, {});
-      } catch (e) {
-        // a new Apple ID: they need the invite code; keep the Apple answer so they sign in only once
-        if (e instanceof ApiError && e.code === 'invite_required') navigation.navigate('Join', { apple });
-        else Alert.alert('Could not sign in', sayError(e));
-      }
-    } finally {
-      setBusy(false);
-    }
-  }
 
   function changeServer() {
     Alert.prompt('Server address', `Now: ${getServerUrl()}\nLeave empty to go back to the normal one.`, [
@@ -62,7 +43,7 @@ export function Welcome({ navigation }: ScreenProps<'Welcome'>) {
         </Pressable>
         <View style={{ width: 32, height: 3, backgroundColor: c.terracotta, borderRadius: 2, marginTop: space.md, marginBottom: space.lg }} />
         <Text style={{ fontSize: type.title, lineHeight: 28, color: c.inkSoft, maxWidth: 300 }}>
-          A private place for us. Messages, photos and voice notes, only between the family.
+          A private place for us. Messages, photos, voice notes and calls, only between the family.
         </Text>
       </View>
 
@@ -70,27 +51,13 @@ export function Welcome({ navigation }: ScreenProps<'Welcome'>) {
         {serverUp === false ? (
           <Pressable onPress={() => void checkServer()} accessibilityRole="button" accessibilityHint="Checks again"
             style={{ padding: space.md, borderRadius: 8, backgroundColor: c.inset, gap: 2 }}>
-            <Text style={{ color: c.ink, fontSize: type.secondary, fontWeight: '600' }}>Karaki is not online yet</Text>
-            <Text style={{ color: c.inkSoft, fontSize: type.caption, lineHeight: 17 }}>The family server is not running yet, so signing in will not work for now. Tap to check again.</Text>
+            <Text style={{ color: c.ink, fontSize: type.secondary, fontWeight: '600' }}>Karaki is not online right now</Text>
+            <Text style={{ color: c.inkSoft, fontSize: type.caption, lineHeight: 17 }}>The family server is not answering, so joining will not work for the moment. Tap to check again.</Text>
           </Pressable>
         ) : null}
-        <AppleAuthentication.AppleAuthenticationButton
-          buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
-          buttonStyle={dark ? AppleAuthentication.AppleAuthenticationButtonStyle.WHITE : AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
-          cornerRadius={8}
-          style={{ height: 44, opacity: busy ? 0.5 : 1 }}
-          onPress={() => { if (!busy) void signIn(); }}
-        />
-        <Pressable
-          onPress={() => navigation.navigate('Join')}
-          accessibilityRole="button"
-          hitSlop={8}
-          style={({ pressed }) => ({ height: 40, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.6 : 1 })}
-        >
-          <Text style={{ color: c.terracotta, fontSize: 15, fontWeight: '600' }}>I have an invite code</Text>
-        </Pressable>
+        <Button label="I have an invite code" onPress={() => navigation.navigate('Join')} />
         <Text style={{ color: c.inkFaint, fontSize: type.caption, textAlign: 'center', lineHeight: 17 }}>
-          Karaki is invite only. Nobody can find you or write to you here unless the family let them in.
+          Karaki is invite only. Open the invite link you were sent, or type its code.
         </Text>
       </View>
     </View>

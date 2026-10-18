@@ -68,6 +68,7 @@ export function loadConfig(env = process.env) {
       nameChars: 40,
       pageSize: 50,
       inviteDays: num(env.INVITE_DAYS, 7),
+      doorTries: num(env.DOOR_TRIES, 30), // per address per 10 minutes, for codes, sign in and the join page
     },
   };
 }

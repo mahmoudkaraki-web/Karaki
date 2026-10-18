@@ -21,8 +21,8 @@ Encryption comes in a later phase (see below): first at rest on the server, then
 
 ### Phase 1: members and messages (built 18 Oct 2026)
 
-* Invite only: the first admin invite is made on the server; after that admins make invite codes in the app.
-* Sign in with Apple.
+* Invite only: the first admin invite is made on the server; after that admins make invite links in the app.
+* From build 8 (18 Oct 2026, MAK: "I'd rather have download link and invite code to login"): the invite link alone gets someone installed and signed in, no Apple sign in. A sign in code from an admin puts a new or reset iPhone into the same account. The join page and a privacy page are served by the Karaki server (/join/CODE, /privacy).
 * One to one chats and group chats: start a group, rename it, add or remove someone, leave.
 * Text, photos (camera or library), voice notes (hold to record, slide left to cancel).
 * Ticks: one when the server has it, two when it reached the other phone, two in terracotta when read. In groups, "seen by" seals under your last message.

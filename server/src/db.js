@@ -41,7 +41,8 @@ CREATE TABLE IF NOT EXISTS invites (
   expires_at  INTEGER NOT NULL,
   used_by     INTEGER REFERENCES members(id),
   used_at     INTEGER,
-  revoked_at  INTEGER
+  revoked_at  INTEGER,
+  for_member  INTEGER REFERENCES members(id)  -- a sign in code for an existing member's new phone
 );
 
 CREATE TABLE IF NOT EXISTS chats (
@@ -125,7 +126,14 @@ export function openDb(dataDir) {
   fs.mkdirSync(path.join(dataDir, 'media'), { recursive: true });
   const db = new DatabaseSync(path.join(dataDir, 'family.sqlite'));
   db.exec(SCHEMA);
+  migrate(db);
   return db;
+}
+
+// columns added after the first install: added in place, data kept
+function migrate(db) {
+  const has = (table, col) => db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === col);
+  if (!has('invites', 'for_member')) db.exec('ALTER TABLE invites ADD COLUMN for_member INTEGER REFERENCES members(id)');
 }
 
 // small helpers so the routes read plainly

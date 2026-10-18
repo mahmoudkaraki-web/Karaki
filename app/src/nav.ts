@@ -3,7 +3,7 @@ import { createNavigationContainerRef } from '@react-navigation/native';
 
 export type Screens = {
   Welcome: undefined;
-  Join: { code?: string; apple?: { identityToken: string; nonce: string; name?: string } } | undefined;
+  Join: { code?: string } | undefined;
   Chats: undefined;
   Chat: { chatId: number };
   ChatInfo: { chatId: number };
