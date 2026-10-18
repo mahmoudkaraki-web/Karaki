@@ -32,6 +32,14 @@ let state: State = {
 const listeners = new Set<() => void>();
 let live: Live | null = null;
 let appActive = AppState.currentState === 'active';
+let keepLive = false; // a call is going on: the socket stays open even in the background
+
+// the calls engine (calls.ts) listens here for call.* events from the server
+const callListeners = new Set<(ev: any) => void>();
+export function onCallEvent(fn: (ev: any) => void) {
+  callListeners.add(fn);
+  return () => { callListeners.delete(fn); };
+}
 
 function set(patch: Partial<State> | ((s: State) => Partial<State>)) {
   state = { ...state, ...(typeof patch === 'function' ? patch(state) : patch) };
@@ -132,6 +140,7 @@ function onEvent(ev: any) {
       void forgetSession();
       break;
     default:
+      if (typeof ev.type === 'string' && ev.type.startsWith('call.')) for (const fn of callListeners) fn(ev);
       break;
   }
 }
@@ -159,6 +168,7 @@ function sweepTyping() {
 
 // after every (re)connect: catch up on what was missed and send what is waiting
 async function afterConnect() {
+  for (const fn of callListeners) fn({ type: 'call.connected' });
   live?.send({ type: 'delivered' });
   try {
     await refreshChats();
@@ -189,7 +199,7 @@ async function startSession(token: string, me: Member) {
   set({ status: 'signedIn', me });
   live?.close();
   live = new Live(token, onEvent, (connected) => set({ connected }));
-  if (appActive) live.open();
+  if (appActive || keepLive) live.open();
   try { await refreshChats(); } catch { /* offline: the socket catches up later */ }
 }
 
@@ -229,8 +239,27 @@ AppState.addEventListener('change', (s) => {
   if (active === appActive) return;
   appActive = active;
   if (!live) return;
-  if (active) live.open(); else live.close();
+  if (active || keepLive) live.open(); else live.close();
 });
+
+// ---------- the live socket, for the calls engine ----------
+export function setKeepLive(on: boolean) {
+  keepLive = on;
+  if (on) live?.open();
+  else if (!appActive) live?.close();
+}
+
+export const isLiveConnected = () => !!live?.connected;
+export const liveSend = (obj: object) => !!live?.send(obj);
+
+// waits (up to ms) for the socket to be signed in, opening it if needed; then sends a request
+export async function liveRequest<T = any>(obj: object, ms = 10_000): Promise<T> {
+  if (!live) throw new Error('signed_out');
+  live.open();
+  const until = Date.now() + ms;
+  while (!live.connected && Date.now() < until) await new Promise((r) => setTimeout(r, 150));
+  return live.request<T>(obj);
+}
 
 // ---------- chats ----------
 export function openChat(chatId: number | null) {

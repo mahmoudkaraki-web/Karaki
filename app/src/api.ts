@@ -7,13 +7,19 @@ import * as SecureStore from 'expo-secure-store';
 export type Member = { id: number; name: string; color: string; isAdmin: boolean; removed?: boolean };
 export type Media = { id: string; kind: 'photo' | 'voice'; mime: string; bytes: number; width: number | null; height: number | null; durationMs: number | null };
 export type Message = {
-  id: number; chatId: number; senderId: number | null; kind: 'text' | 'photo' | 'voice' | 'system';
+  id: number; chatId: number; senderId: number | null; kind: 'text' | 'photo' | 'voice' | 'system' | 'call';
   body: string | null; media: Media | null; clientId: string | null; createdAt: number;
 };
 export type Receipt = { delivered: number; read: number };
 export type Chat = {
   id: number; kind: 'direct' | 'group'; title: string | null; createdBy: number; createdAt: number; updatedAt: number;
   members: Member[]; receipts: Record<string, Receipt>; unread: number; last: Message | null;
+  activeCall: { id: string; kind: 'voice' | 'video'; startedBy: number; joined: number[] } | null;
+};
+export type CallMember = { id: number; state: 'ringing' | 'joined' | 'left' | 'declined' | 'missed' | 'busy' };
+export type CallRecord = {
+  id: string; chatId: number; kind: 'voice' | 'video'; startedBy: number; createdAt: number;
+  answeredAt: number | null; endedAt: number | null; endReason: string | null; ringUntil: number; members: CallMember[];
 };
 export type Invite = { id: number; code?: string; link?: string; nameHint: string | null; isAdmin?: boolean; expiresAt: number };
 

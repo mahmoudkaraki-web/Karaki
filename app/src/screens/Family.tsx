@@ -3,10 +3,11 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, Linking, Pressable, ScrollView, Share, Text, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { api, getServerUrl, sayError, type Invite } from '../api';
-import { renameMe, signOut, useFamily } from '../store';
+import { openDirect, renameMe, signOut, useFamily } from '../store';
+import { startCall } from '../calls';
 import { pushState, registerForPush, type PushState } from '../push';
 import { radius, serif, space, type, useTheme } from '../theme';
-import { Button, Divider, Seal, SectionLabel, fullDate } from '../ui';
+import { Button, Divider, HeaderButton, Seal, SectionLabel, fullDate } from '../ui';
 import type { ScreenProps } from '../nav';
 
 export function Family({ navigation }: ScreenProps<'Family'>) {
@@ -69,6 +70,16 @@ export function Family({ navigation }: ScreenProps<'Family'>) {
     ]);
   }
 
+  // a member's own call buttons: opens (or finds) the chat with them, then calls
+  async function callMember(id: number, kind: 'voice' | 'video') {
+    try {
+      const chat = await openDirect(id);
+      await startCall(chat.id, kind);
+    } catch (e) {
+      Alert.alert('The call could not start', sayError(e));
+    }
+  }
+
   function confirmSignOut() {
     Alert.alert('Sign out of Karaki on this iPhone?', 'Your messages stay on the family server. Sign in with Apple again to come back.', [
       { text: 'Stay', style: 'cancel' },
@@ -99,6 +110,12 @@ export function Family({ navigation }: ScreenProps<'Family'>) {
                   {[m.isAdmin ? 'Admin' : null, online.includes(m.id) ? 'Here now' : null, m.id === me.id ? 'Tap to change your name' : null].filter(Boolean).join(' · ') || 'Member'}
                 </Text>
               </View>
+              {m.id !== me.id ? (
+                <View style={{ flexDirection: 'row', gap: space.lg }}>
+                  <HeaderButton icon="phone" accessibilityLabel={`Call ${m.name}`} onPress={() => void callMember(m.id, 'voice')} />
+                  <HeaderButton icon="video" accessibilityLabel={`Video call ${m.name}`} onPress={() => void callMember(m.id, 'video')} />
+                </View>
+              ) : null}
             </Pressable>
           </View>
         ))}

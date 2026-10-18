@@ -4,7 +4,7 @@ import React from 'react';
 import { ActionSheetIOS, Alert, Pressable, ScrollView, Text, View } from 'react-native';
 import { sayError } from '../api';
 import { addToGroup, removeFromGroup, renameGroup, useFamily } from '../store';
-import { callsComingSoon } from './Chat';
+import { startCall } from '../calls';
 import { serif, space, type, useTheme } from '../theme';
 import { Button, Divider, Icon, Seal, SectionLabel, chatTitle, fullDate } from '../ui';
 import type { ScreenProps } from '../nav';
@@ -64,11 +64,10 @@ export function ChatInfo({ route, navigation }: ScreenProps<'ChatInfo'>) {
           {isGroup ? `Group of ${chat.members.length}` : 'Just the two of you'}
         </Text>
         <View style={{ flexDirection: 'row', gap: space.sm, marginTop: space.sm }}>
-          <Button small kind="quiet" icon="phone" label="Call" onPress={callsComingSoon} />
-          <Button small kind="quiet" icon="video" label="Video" onPress={callsComingSoon} />
+          <Button small kind="quiet" icon="phone" label="Call" onPress={() => void startCall(chatId, 'voice')} />
+          <Button small kind="quiet" icon="video" label="Video" onPress={() => void startCall(chatId, 'video')} />
           {isGroup ? <Button small kind="quiet" icon="pencil" label="Rename" onPress={rename} /> : null}
         </View>
-        <Text style={{ color: c.inkGhost, fontSize: type.caption }}>Calls are coming soon</Text>
       </View>
 
       {isGroup ? (

@@ -166,9 +166,27 @@ export function chatTitle(chat: Chat, meId?: number) {
 
 export const firstName = (name: string) => name.trim().split(/\s+/)[0];
 
+// a call line in the chat, from the point of view of whoever reads it
+export function callLineWords(body: string | null, mine: boolean): { text: string; kind: 'voice' | 'video'; missed: boolean } {
+  let c: { kind?: string; outcome?: string; seconds?: number } = {};
+  try { c = JSON.parse(body || '{}'); } catch { /* an odd line */ }
+  const kind = c.kind === 'video' ? 'video' : 'voice';
+  const what = kind === 'video' ? 'Video call' : 'Voice call';
+  if (c.outcome === 'ended') {
+    const mins = Math.round((c.seconds || 0) / 60);
+    return { text: `${what}, ${mins >= 1 ? `${mins} min` : 'under a minute'}`, kind, missed: false };
+  }
+  if (mine) {
+    const words: Record<string, string> = { declined: 'declined', busy: 'busy', cancelled: 'cancelled', missed: 'no answer' };
+    return { text: `${what}, ${words[c.outcome || 'missed'] || 'no answer'}`, kind, missed: false };
+  }
+  return { text: `Missed ${what.toLowerCase()}`, kind, missed: true };
+}
+
 export function previewOf(chat: Chat, meId?: number) {
   const m = chat.last;
   if (!m) return 'No messages yet';
+  if (m.kind === 'call') return callLineWords(m.body, m.senderId === meId).text;
   const what = m.kind === 'photo' ? (m.body ? `Photo: ${m.body}` : 'Photo') : m.kind === 'voice' ? 'Voice note' : m.body || '';
   if (m.kind === 'system' || chat.kind === 'direct' || m.senderId === meId) return what;
   const who = chat.members.find((x) => x.id === m.senderId);

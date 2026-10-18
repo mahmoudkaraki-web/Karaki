@@ -38,7 +38,7 @@ export class Live {
         const w = this.waiting.get(ev.ref)!;
         this.waiting.delete(ev.ref);
         clearTimeout(w.t);
-        if (ev.type === 'error') w.reject(Object.assign(new Error(ev.code), { code: ev.code }));
+        if (ev.type === 'error') w.reject(Object.assign(new Error(ev.code), { code: ev.code, call: ev.call }));
         else w.resolve(ev);
         return;
       }

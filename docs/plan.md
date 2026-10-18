@@ -29,15 +29,17 @@ Encryption comes in a later phase (see below): first at rest on the server, then
 * Who is writing, and who has the app open right now.
 * Push notifications for members who do not have the app open, with the unread count on the icon.
 * History in pages of 50, older pages loading as you scroll up.
-* A call button in every chat that is already there and says calls are coming soon.
 
-### Phase 2: one to one calls
+### Phases 2 and 3: calls (built 18 Oct 2026, together)
 
-Voice and video calls between two people, ringing on the lock screen like a normal call (CallKit and VoIP push). How it will work: docs/phase-2.md.
+* One to one and group calls (up to 4 people), voice and video, from every chat, the person's page and the family screen.
+* Ringing like a normal phone call through CallKit and VoIP pushes, also with the app closed and the phone locked; answer and decline from the lock screen.
+* Mute, speaker, camera on and off, front or back camera.
+* A group call that is going on shows in the chat with a Join button.
+* Every call leaves a line in the chat ("Video call, 4 min", "Missed voice call").
+* A relay (TURN, coturn on the box) for networks that block direct calls, with passwords that expire.
 
-### Phase 3: group calls
-
-All three of us on one call. With three people every phone can send straight to the other two (a "mesh"), so no extra media server is needed; the same TURN relay from phase 2 helps when a network blocks direct connections.
+How it works and what is still to try on real iPhones: docs/phase-2.md.
 
 ### Later
 
@@ -51,4 +53,4 @@ All three of us on one call. With three people every phone can send straight to 
 * app/: the iPhone app (Expo SDK 57). Build: app/ios-build.ps1.
 * .interface-design/system.md: the look and why.
 * docs/setup-for-mak.md: the steps only MAK can do.
-* docs/phase-2.md: calls.
+* docs/phase-2.md: how calls work.

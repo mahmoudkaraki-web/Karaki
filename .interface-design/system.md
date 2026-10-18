@@ -79,7 +79,11 @@ Surface colour shifts plus hairlines. No drop shadows anywhere (they read as dir
 * Seal: sizes 24 (seen by, typing), 36 (rows, header), 48 (household strip), 72 (profile). Radius 8 at 36 and below, 12 at 48, 18 at 72. Initial in Fraunces 600, linen on the member colour.
 * Ticks: SF Symbol checkmarks at 11 px, semibold. One sent, two overlapping (4.5 px apart) delivered in inkFaint, two read in terracotta (a lighter terracotta #E9A27C inside your own walnut bubbles). A small clock while waiting for the server, a red mark when it failed.
 * Composer: inset field radius 10, min 40 px; photo button left; on the right a mic you hold to record (slide left to cancel), which becomes a 34 px terracotta squared send button once there is text.
-* Call buttons (phone, video) in the chat header from day one; they say calls are coming soon until phase 2.
+* Call buttons (phone, video) in the chat header, on the person's page and beside each person in the family screen.
+* The call screen is always the night table (#15130F) whatever the phone's theme, like the iPhone's own call screen. Controls are squared tiles, 60 by 52, radius 12, a quiet fill (rgba 255,240,220,0.10) that turns linen when switched on (muted, speaker, camera off); the label sits under the tile at 11 px. End, Answer and Decline are wide slim bars, 48 tall, radius 10: danger red #C2493A, answer green #3F8F5C. Never round pills.
+* Video: the others fill the screen, split top to bottom for two or three; you in a 100 by 142 tile, radius 12, top right, mirrored on the front camera. Voice: the others' seals at 72 with name and state under each.
+* A running group call shows as a paper band under the chat header: phone or video icon in terracotta, "Call in progress" with who is on it, and a small Join button.
+* Call lines in the chat: a small centred paper chip with a phone or video icon, the words and the time; terracotta when it is a missed call. Tapping it calls back.
 
 ## Motion
 

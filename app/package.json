@@ -10,6 +10,7 @@
     "check": "tsc --noEmit && npx expo export --platform ios --output-dir dist"
   },
   "dependencies": {
+    "@config-plugins/react-native-webrtc": "^15.0.2",
     "@expo-google-fonts/fraunces": "^0.4.1",
     "@react-navigation/elements": "^2.9.45",
     "@react-navigation/native": "^7.5.1",
@@ -35,10 +36,21 @@
     "react": "19.2.3",
     "react-native": "0.86.3",
     "react-native-safe-area-context": "~5.7.0",
-    "react-native-screens": "~4.26.0"
+    "react-native-screens": "~4.26.0",
+    "react-native-webrtc": "^155.0.0"
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
     "typescript": "~6.0.3"
+  },
+  "expo": {
+    "doctor": {
+      "reactNativeDirectoryCheck": {
+        "exclude": [
+          "react-native-webrtc",
+          "karaki-calls"
+        ]
+      }
+    }
   }
 }

@@ -24,6 +24,8 @@ import { ChatInfo } from './src/screens/ChatInfo';
 import { Family } from './src/screens/Family';
 import { NewChat } from './src/screens/NewChat';
 import { Photo } from './src/screens/Photo';
+import { Call } from './src/screens/Call';
+import { startCallEngine } from './src/calls';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 // voice notes play even when the ring/silent switch is on silent
@@ -46,6 +48,9 @@ export default function App() {
   const [pendingCode, setPendingCode] = useState<string | undefined>();
 
   useEffect(() => { void boot(); }, []);
+
+  // calls: CallKit, VoIP pushes and the call signalling, once someone is signed in
+  useEffect(() => (status === 'signedIn' ? startCallEngine() : undefined), [status]);
 
   useEffect(() => {
     Linking.getInitialURL().then((u) => setPendingCode(inviteCodeFrom(u))).catch(() => {});
@@ -112,6 +117,7 @@ export default function App() {
               <Stack.Screen name="Family" component={Family} options={{ title: 'The family' }} />
               <Stack.Screen name="NewChat" component={NewChat} options={{ title: 'New conversation', presentation: 'modal' }} />
               <Stack.Screen name="Photo" component={Photo} options={{ headerShown: false, presentation: 'fullScreenModal', animation: 'fade' }} />
+              <Stack.Screen name="Call" component={Call} options={{ headerShown: false, presentation: 'fullScreenModal', gestureEnabled: false, animation: 'fade' }} />
             </>
           ) : (
             <>

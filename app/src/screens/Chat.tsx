@@ -2,7 +2,7 @@
 // names in groups, ticks, "seen by" seals, who is writing, the composer. The call buttons are
 // already in the header for phase 2 and say so when tapped.
 import React, { useEffect, useLayoutEffect, useMemo } from 'react';
-import { ActionSheetIOS, ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Pressable, Text, View } from 'react-native';
+import { ActionSheetIOS, ActivityIndicator, FlatList, KeyboardAvoidingView, Pressable, Text, View } from 'react-native';
 import { useHeaderHeight } from '@react-navigation/elements';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { authHeaders, mediaUrl } from '../api';
@@ -10,7 +10,8 @@ import { discard, loadOlder, loadThread, openChat, retry, useFamily, type LocalM
 import { Bubble } from '../chat/Bubble';
 import { Composer } from '../chat/Composer';
 import { radius, serif, space, type, useTheme } from '../theme';
-import { HeaderButton, Seal, chatTitle, dayWords, firstName, sameDay, tickFor } from '../ui';
+import { Button, HeaderButton, Icon, Seal, callLineWords, chatTitle, clock, dayWords, firstName, sameDay, tickFor } from '../ui';
+import { joinCall, startCall, useCall } from '../calls';
 import type { ScreenProps } from '../nav';
 
 type Row =
@@ -20,9 +21,6 @@ type Row =
 const RUN_GAP_MS = 5 * 60_000;
 const EMPTY: LocalMessage[] = [];
 
-export function callsComingSoon() {
-  Alert.alert('Calls are coming soon', 'Voice and video calls between the family arrive in the next version of Karaki.');
-}
 
 export function Chat({ route, navigation }: ScreenProps<'Chat'>) {
   const { chatId } = route.params;
@@ -35,6 +33,7 @@ export function Chat({ route, navigation }: ScreenProps<'Chat'>) {
   const typingMap = useFamily((s) => s.typing[chatId]);
   const online = useFamily((s) => s.online);
   const items = thread?.items || EMPTY;
+  const current = useCall();
 
   useEffect(() => {
     openChat(chatId);
@@ -73,8 +72,8 @@ export function Chat({ route, navigation }: ScreenProps<'Chat'>) {
       ),
       headerRight: () => (
         <View style={{ flexDirection: 'row', gap: space.lg }}>
-          <HeaderButton icon="phone" onPress={callsComingSoon} accessibilityLabel="Voice call, coming soon" />
-          <HeaderButton icon="video" onPress={callsComingSoon} accessibilityLabel="Video call, coming soon" />
+          <HeaderButton icon="phone" onPress={() => void startCall(chatId, 'voice')} accessibilityLabel="Voice call" />
+          <HeaderButton icon="video" onPress={() => void startCall(chatId, 'video')} accessibilityLabel="Video call" />
         </View>
       ),
     });
@@ -118,8 +117,22 @@ export function Chat({ route, navigation }: ScreenProps<'Chat'>) {
 
   if (!chat || !me) return <View style={{ flex: 1, backgroundColor: c.linen }} />;
 
+  const running = chat.activeCall && !chat.activeCall.joined.includes(me.id) && current?.id !== chat.activeCall.id ? chat.activeCall : null;
+
   return (
     <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={headerHeight} style={{ flex: 1, backgroundColor: c.linen }}>
+      {running ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md, paddingHorizontal: space.lg, paddingVertical: space.sm, backgroundColor: c.paper, borderBottomWidth: 1, borderBottomColor: c.hairlineSoft }}>
+          <Icon name={running.kind === 'video' ? 'video.fill' : 'phone.fill'} size={15} color={c.terracotta} />
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: c.ink, fontSize: type.secondary, fontWeight: '600' }}>{running.kind === 'video' ? 'Video call' : 'Call'} in progress</Text>
+            <Text numberOfLines={1} style={{ color: c.inkFaint, fontSize: type.caption }}>
+              {running.joined.map((id) => firstName(chat.members.find((x) => x.id === id)?.name || '')).filter(Boolean).join(', ')}
+            </Text>
+          </View>
+          <Button small label="Join" onPress={() => void joinCall(running.id)} />
+        </View>
+      ) : null}
       <FlatList
         inverted
         data={rows}
@@ -147,6 +160,17 @@ export function Chat({ route, navigation }: ScreenProps<'Chat'>) {
             );
           }
           const m = r.m;
+          if (m.kind === 'call') {
+            const words = callLineWords(m.body, m.senderId === me.id);
+            return (
+              <Pressable onPress={() => void startCall(chatId, words.kind)} accessibilityRole="button" accessibilityHint="Calls back"
+                style={({ pressed }) => ({ alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 6, marginVertical: space.sm, paddingVertical: 6, paddingHorizontal: space.md, borderRadius: radius.control, backgroundColor: c.paper, borderWidth: 1, borderColor: c.hairlineSoft, opacity: pressed ? 0.6 : 1 })}>
+                <Icon name={words.kind === 'video' ? 'video.fill' : 'phone.fill'} size={13} color={words.missed ? c.terracotta : c.inkFaint} />
+                <Text style={{ color: words.missed ? c.terracotta : c.inkSoft, fontSize: type.caption, fontWeight: '600' }}>{words.text}</Text>
+                <Text style={{ color: c.inkFaint, fontSize: 11, fontVariant: ['tabular-nums'] }}>{clock(m.createdAt)}</Text>
+              </Pressable>
+            );
+          }
           if (m.kind === 'system') {
             return (
               <View style={{ alignItems: 'center', marginVertical: space.sm, paddingHorizontal: space.xl }}>

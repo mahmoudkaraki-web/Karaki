@@ -10,6 +10,7 @@ export type Screens = {
   Family: undefined;
   NewChat: undefined;
   Photo: { uri: string; headers?: Record<string, string> };
+  Call: undefined;
 };
 
 export type ScreenProps<K extends keyof Screens> = NativeStackScreenProps<Screens, K>;
