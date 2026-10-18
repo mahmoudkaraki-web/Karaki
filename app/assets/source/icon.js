@@ -3,7 +3,7 @@
 const path = require("path");
 const sharp = require(require.resolve("sharp", { paths: ["C:/Users/mahmo/OneDrive - Be Smart Me/BeSmart APPs - BeSmart APPs/besmart-pos-app"] }));
 const out = process.argv[2];
-const dx = -34; // centre the K inside the shield
+const dx = -17; // the K sits optically centred: its outline 17 px right of the middle, its ink 16 px left (the heavy stem pulls the eye left)
 const P = pts => pts.map(([x, y]) => `${x + dx},${y}`).join(" ");
 const R = (x1, y1, x2, y2) => `<rect x="${x1 + dx}" y="${y1}" width="${x2 - x1}" height="${y2 - y1}"/>`;
 const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
@@ -22,7 +22,7 @@ const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" 
 <rect width="1024" height="1024" fill="url(#navy)"/>
 <path d="M232 196 H792 V520 C792 704 662 804 512 866 C362 804 232 704 232 520 Z" fill="url(#field)" stroke="url(#pearl)" stroke-width="16" stroke-linejoin="round"/>
 <path d="M262 226 H762 V520 C762 686 646 776 512 832 C378 776 262 686 262 520 Z" fill="none" stroke="#EDE6DA" stroke-opacity="0.55" stroke-width="4" stroke-linejoin="round"/>
-<g fill="url(#pearl)">
+<g fill="url(#pearl)" transform="translate(530 500) scale(0.9) translate(-530 -500)">
   ${R(400, 334, 452, 686)}
   ${R(366, 320, 486, 336)}
   ${R(366, 684, 486, 700)}
