@@ -56,7 +56,8 @@ export function loadConfig(env = process.env) {
       stunUrls: list(env.STUN_URLS),
       turnUrls: list(env.TURN_URLS),
       turnSecret: env.TURN_SECRET || '',
-      turnTtlSeconds: num(env.TURN_TTL_SECONDS, 4 * 3600),
+      // about two hours per call; coturn checks the expiry when a phone asks for or refreshes a relay
+      turnTtlSeconds: num(env.TURN_TTL_SECONDS, 2 * 3600),
     },
     limits: {
       textChars: num(env.LIMIT_TEXT_CHARS, 8000),

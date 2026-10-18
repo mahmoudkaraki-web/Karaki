@@ -17,7 +17,7 @@ Built 18 Oct 2026, both phases together: one to one and group calls, voice and v
 3. Apple's rule: a VoIP push must be shown as a call at once, or iOS stops delivering them and may close the app. Karaki's own small native module (app/modules/karaki-calls, Swift) handles the push before any JavaScript runs and reports it to CallKit immediately. A push that arrives after the call stopped ringing is still reported, and then ended straight away.
 4. Answering: CallKit tells the app, the app joins the call on the server (`call.accept`), and then sends a WebRTC offer to everyone already on the call. That one rule (whoever joins makes the offers) is the whole group call design: with three people every phone has a direct connection to each of the other two (a mesh), so no media server is needed.
 5. Offers, answers and network candidates go phone to server to phone (`call.offer`, `call.answer`, `call.ice`); camera and microphone state too (`call.media`). Only people on the call get them.
-6. Voice and video then flow directly between the phones, encrypted by WebRTC itself (DTLS and SRTP, built into every WebRTC call). When two phones cannot reach each other directly, they relay through the TURN server (coturn) on the box. The Karaki server gives each phone a TURN password that expires after a few hours, signed with the shared secret the way coturn expects.
+6. Voice and video then flow directly between the phones, encrypted by WebRTC itself (DTLS and SRTP, built into every WebRTC call). When two phones cannot reach each other directly, they relay through the TURN server (coturn) on the box. That relay already runs on the box (coturn 4.6.1, set up by MAK on 18 Oct 2026, UDP and TCP on port 3478, relay ports UDP 49160 to 49200). The Karaki server gives each phone a TURN password that lasts about two hours, signed with the shared secret the way coturn expects.
 7. Ending: whoever leaves sends `call.hangup`. A one to one call ends when either side leaves; a group call ends when one person is left. Nobody answering for 45 seconds ends the ring as missed. Busy (already on a call, or the phone said busy) and declined end it too. A phone that loses its connection mid call gets 20 seconds to come back before it counts as gone.
 
 ## The parts
@@ -26,7 +26,7 @@ Built 18 Oct 2026, both phases together: one to one and group calls, voice and v
 * app/modules/karaki-calls: CallKit and PushKit in Swift, loaded at app launch through an Expo app delegate hook. Chosen over react-native-callkeep and react-native-voip-push-notification because those need Objective C changes to the app delegate, which Expo SDK 57 now writes in Swift, and because the push has to reach CallKit natively anyway. It also hands CallKit's audio session to WebRTC (manual audio), which is what makes answering from the lock screen produce sound.
 * app/src/calls.ts: the call logic on the phone. app/src/screens/Call.tsx: the call screen.
 * server/src/calls.js: ringing, signalling, the ring timeout, busy, the call record, VoIP pushes, TURN passwords.
-* server/deploy/turnserver.conf: coturn for the box.
+* The relay's install script and test: Karaki APP\relay-setup, outside the code.
 * Info.plist: background modes voip and audio, camera and microphone texts.
 
 ## Tests
@@ -36,7 +36,7 @@ Built 18 Oct 2026, both phases together: one to one and group calls, voice and v
 
 ## Still to check on real iPhones
 
-1. A call between two iPhones on WiFi, then one on mobile data (that one needs TURN online).
+1. A call between two iPhones on WiFi, then one on mobile data (that one goes through the relay).
 2. Ringing with Karaki closed and the phone locked; answering and declining from the lock screen.
 3. Speaker, mute from the CallKit screen, Bluetooth earphones.
 4. A group call with three phones, and someone joining late.

@@ -9,6 +9,9 @@ Wants=network-online.target
 Type=simple
 User=karaki
 WorkingDirectory=/opt/karaki/server
+# the TURN relay's secret and addresses (root only, read by systemd before it starts the server);
+# node --env-file never overrides what is already set, so these win over anything in .env
+EnvironmentFile=/etc/karaki/turn.env
 ExecStart=/usr/bin/node --env-file=/opt/karaki/server/.env src/index.js
 Restart=always
 RestartSec=3

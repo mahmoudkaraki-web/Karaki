@@ -65,16 +65,13 @@ Port 4100 stays closed to the internet; only Caddy (ports 80 and 443) talks to t
 
 The box is Ubuntu with systemd, like the R&B services, so these files fit as they are.
 
-### 5. TURN for calls (after the demo, with step 4)
+### 5. The call relay (TURN): already done
 
-Most calls go straight from phone to phone. When a mobile network or an office WiFi blocks that, the call goes through a relay on the box called coturn. Without it some calls connect and then stay silent. On the box:
+Most calls go straight from phone to phone. When a mobile network or an office WiFi blocks that, the call goes through the relay on the box (coturn). You installed it on 18 Oct 2026 and it was checked from the laptop over the internet: a wrong password was refused, the right one got a relay.
 
-1. Install it: `sudo apt install coturn`, then in /etc/default/coturn make sure the line `TURNSERVER_ENABLED=1` is there.
-2. Make the shared secret yourself: `openssl rand -hex 32`. It prints a long random value. Nobody else needs to see it.
-3. Copy server/deploy/turnserver.conf to /etc/turnserver.conf and fill in its two blanks: `static-auth-secret=` the value from step 2, and `external-ip=20.74.255.57/` followed by the box's private address (`hostname -I` shows it, it starts with 10.).
-4. In /opt/karaki/server/.env set `TURN_SECRET=` to the very same value. The STUN and TURN addresses in .env.example already point at karaki.besmart-me.com.
-5. Open the ports in Azure (the box's network security group) and in the box's firewall: 3478 UDP and TCP, and UDP 49160 to 49200. For the firewall: `sudo ufw allow 3478` and `sudo ufw allow 49160:49200/udp`.
-6. `sudo mkdir -p /var/log/turnserver && sudo chown turnserver /var/log/turnserver`, then `sudo systemctl restart coturn` and `sudo systemctl restart karaki`.
+Its secret and addresses are in /etc/karaki/turn.env on the box, readable only by root. The Karaki service file (server/deploy/karaki.service) already loads that file, so when the server goes online in step 4 there is nothing more to do for the relay. Calls work from any country.
+
+The install script and the test stay outside the code, in Karaki APP\relay-setup.
 
 Nothing new is needed on developer.apple.com for calls: the same push key (AuthKey_CB........p8) also sends the ringing pushes (VoIP pushes), and the Push Notifications tick on com.besmart.karaki covers them.
 

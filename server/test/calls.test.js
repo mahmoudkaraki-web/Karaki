@@ -233,3 +233,22 @@ test('TURN credentials: short lived, and the password is the HMAC coturn expects
   assert.equal(turn.credential, expected);
   assert.equal((await t.api('GET', '/calls/ice', {})).status, 401, 'nothing for strangers');
 });
+
+test('the relay settings come only from the environment, credentials last two hours by default', async () => {
+  const { loadConfig } = await import('../src/config.js');
+  const bare = loadConfig({});
+  assert.deepEqual([bare.calls.turnUrls, bare.calls.turnSecret, bare.calls.stunUrls], [[], '', []], 'nothing built in');
+  assert.equal(bare.calls.turnTtlSeconds, 7200);
+  const box = loadConfig({
+    STUN_URLS: 'stun:20.74.255.57:3478',
+    TURN_URLS: 'turn:20.74.255.57:3478?transport=udp,turn:20.74.255.57:3478?transport=tcp',
+    TURN_SECRET: 'from-turn-env',
+  });
+  assert.deepEqual(box.calls.turnUrls, ['turn:20.74.255.57:3478?transport=udp', 'turn:20.74.255.57:3478?transport=tcp']);
+  assert.deepEqual(box.calls.stunUrls, ['stun:20.74.255.57:3478']);
+  const { turnCredentials } = await import('../src/calls.js');
+  const now = Date.UTC(2026, 9, 18, 12, 0, 0);
+  const c = turnCredentials({ secret: box.calls.turnSecret, ttlSeconds: box.calls.turnTtlSeconds, memberId: 7, nowMs: now });
+  assert.equal(c.username, `${now / 1000 + 7200}:7`);
+  assert.equal(c.credential, crypto.createHmac('sha1', 'from-turn-env').update(c.username).digest('base64'));
+});
