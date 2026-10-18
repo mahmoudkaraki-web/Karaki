@@ -8,6 +8,7 @@ import multer from 'multer';
 import { openDb } from './db.js';
 import { makeFamily, FamilyError } from './family.js';
 import { makeHub, attachRealtime } from './realtime.js';
+import { makeCalls } from './calls.js';
 import { makeAppleVerifier, AuthError } from './apple.js';
 import { makeApnsSender } from './apns.js';
 
@@ -26,11 +27,13 @@ function limiter({ windowMs, max }) {
   };
 }
 
-export function createFamilyServer(config, { appleKeySet, push, log = console } = {}) {
+export function createFamilyServer(config, { appleKeySet, push, voipPush, log = console } = {}) {
   const db = openDb(config.dataDir);
   const hub = makeHub();
   const pushSender = push !== undefined ? push : makeApnsSender({ ...config.apns, topic: config.bundleId, log });
   const family = makeFamily({ db, config, hub, push: pushSender, log });
+  // VoIP pushes go through the same APNs sender (same key), with push type voip and the .voip topic
+  const calls = makeCalls({ db, config, hub, family, voipPush: voipPush !== undefined ? voipPush : pushSender, log });
   const verifyApple = makeAppleVerifier({
     jwksUrl: config.appleJwksUrl, issuer: config.appleIssuer, audience: config.bundleId, keySet: appleKeySet,
   });
@@ -52,7 +55,7 @@ export function createFamilyServer(config, { appleKeySet, push, log = console } 
       const out = await fn(req, res);
       if (out !== STREAMING && !res.headersSent) res.json(out ?? { ok: true });
     } catch (e) {
-      if (e instanceof FamilyError) return res.status(e.status).json({ error: e.code });
+      if (e instanceof FamilyError) return res.status(e.status).json({ error: e.code, ...(e.call ? { call: e.call } : {}) });
       if (e instanceof AuthError) return res.status(401).json({ error: e.code });
       log.error?.(`[http] ${req.method} ${req.path}: ${e.stack || e.message}`);
       return res.status(500).json({ error: 'server_error' });
@@ -108,6 +111,10 @@ export function createFamilyServer(config, { appleKeySet, push, log = console } 
   app.post('/chats/:id/read', auth, wrap((req) => family.markRead(req.me, req.params.id, req.body?.upTo)));
   app.post('/chats/:id/delivered', auth, wrap((req) => family.markDelivered(req.me, req.params.id, req.body?.upTo)));
 
+  // ----- calls: the ringing and signalling run on the live socket; these two help the app -----
+  app.get('/calls/ice', auth, wrap((req) => ({ iceServers: calls.iceServers(req.me.id) })));
+  app.get('/calls/current', auth, wrap((req) => ({ call: calls.current(req.me) })));
+
   // ----- photos and voice notes: kept on the server's disk, in the data folder -----
   const tmpDir = path.join(config.dataDir, 'media', 'incoming');
   fs.mkdirSync(tmpDir, { recursive: true });
@@ -140,12 +147,13 @@ export function createFamilyServer(config, { appleKeySet, push, log = console } 
   app.use((req, res) => res.status(404).json({ error: 'not_found' }));
 
   const server = http.createServer(app);
-  const wss = attachRealtime(server, { family, hub, log });
+  const wss = attachRealtime(server, { family, calls, hub, log });
 
   return {
-    app, server, family, hub, db,
+    app, server, family, calls, hub, db,
     listen: (port = config.port, host = config.host) => new Promise((resolve) => server.listen(port, host, () => resolve(server.address()))),
     close: () => new Promise((resolve) => {
+      calls.stop();
       for (const ws of wss.clients) ws.terminate();
       wss.close();
       server.close(() => { db.close(); resolve(); });

@@ -12,15 +12,16 @@ import { createFamilyServer } from '../src/server.js';
 
 const quiet = { log() {}, warn() {}, error() {} };
 
-export async function startTestServer({ limits = {} } = {}) {
+export async function startTestServer({ limits = {}, calls = {} } = {}) {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'family-test-'));
   const config = loadConfig({ DATA_DIR: dataDir });
   Object.assign(config.limits, limits);
+  Object.assign(config.calls, calls);
   const { publicKey, privateKey } = await generateKeyPair('RS256');
   const jwk = { ...(await exportJWK(publicKey)), kid: 'test-key', alg: 'RS256', use: 'sig' };
   const pushes = [];
   const push = async (token, payload, opts) => { pushes.push({ token, payload, opts }); return { ok: true, status: 200 }; };
-  const srv = createFamilyServer(config, { appleKeySet: createLocalJWKSet({ keys: [jwk] }), push, log: quiet });
+  const srv = createFamilyServer(config, { appleKeySet: createLocalJWKSet({ keys: [jwk] }), push, voipPush: push, log: quiet });
   const addr = await srv.listen(0, '127.0.0.1');
   const base = `http://127.0.0.1:${addr.port}`;
 

@@ -22,6 +22,8 @@ export function resolveApnsKey(keyPath, keyId) {
   return { keyPath: file || keyPath, keyId: keyId || (fromName ? fromName[1] : '') };
 }
 
+const list = (v) => String(v || '').split(',').map((x) => x.trim()).filter(Boolean);
+
 function num(v, fallback) {
   const n = Number(v);
   return Number.isFinite(n) && v !== '' && v != null ? n : fallback;
@@ -45,6 +47,16 @@ export function loadConfig(env = process.env) {
       teamId: env.APNS_TEAM_ID || '5TV89KGJVR',
       production: env.APNS_PRODUCTION === '1' || env.APNS_PRODUCTION === 'true',
       showPreview: env.PUSH_PREVIEW !== '0', // 0 hides message text on the lock screen
+    },
+    // calls: STUN and TURN addresses and the TURN secret come from the environment only
+    calls: {
+      ringMs: num(env.CALL_RING_SECONDS, 45) * 1000,
+      reconnectGraceMs: num(env.CALL_RECONNECT_SECONDS, 20) * 1000,
+      maxParticipants: num(env.CALL_MAX_PEOPLE, 4),
+      stunUrls: list(env.STUN_URLS),
+      turnUrls: list(env.TURN_URLS),
+      turnSecret: env.TURN_SECRET || '',
+      turnTtlSeconds: num(env.TURN_TTL_SECONDS, 4 * 3600),
     },
     limits: {
       textChars: num(env.LIMIT_TEXT_CHARS, 8000),

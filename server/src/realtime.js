@@ -20,12 +20,20 @@ export function makeHub() {
       if (!set.size) byMember.delete(memberId);
     },
     isOnline: (memberId) => byMember.has(memberId),
+    deviceOnline(deviceId) {
+      for (const set of byMember.values()) for (const ws of set) if (ws.deviceId === deviceId && ws.readyState === 1) return true;
+      return false;
+    },
+    sendToDevice(deviceId, event) {
+      const data = JSON.stringify(event);
+      for (const set of byMember.values()) for (const ws of set) if (ws.deviceId === deviceId && ws.readyState === 1) ws.send(data);
+    },
     onlineIds: () => [...byMember.keys()],
-    sendToMember(memberId, event) {
+    sendToMember(memberId, event, { exceptDevice } = {}) {
       const set = byMember.get(memberId);
       if (!set) return;
       const data = JSON.stringify(event);
-      for (const ws of set) if (ws.readyState === 1) ws.send(data);
+      for (const ws of set) if (ws.readyState === 1 && ws.deviceId !== exceptDevice) ws.send(data);
     },
     broadcast(event) {
       const data = JSON.stringify(event);
@@ -40,7 +48,7 @@ export function makeHub() {
   };
 }
 
-export function attachRealtime(server, { family, hub, log = console }) {
+export function attachRealtime(server, { family, calls, hub, log = console }) {
   const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 64 * 1024 });
 
   // drop sockets that stopped answering (a phone that lost signal without closing)
@@ -61,6 +69,7 @@ export function attachRealtime(server, { family, hub, log = console }) {
     ws.alive = true;
     ws.on('pong', () => (ws.alive = true));
     let me = null;
+    let device = null;
     const authTimer = setTimeout(() => { if (!me) ws.close(4000, 'auth_timeout'); }, 10_000);
     const reply = (obj) => ws.readyState === 1 && ws.send(JSON.stringify(obj));
 
@@ -76,6 +85,7 @@ export function attachRealtime(server, { family, hub, log = console }) {
         if (!who) return ws.close(4001, 'bad_token');
         clearTimeout(authTimer);
         me = who.member;
+        device = who.device;
         ws.memberId = me.id;
         ws.deviceId = who.device.id;
         const wasOnline = hub.isOnline(me.id);
@@ -102,13 +112,27 @@ export function attachRealtime(server, { family, hub, log = console }) {
           case 'typing':
             family.typing(me, msg.chatId, msg.on);
             return undefined;
-          // phase 2: call offers, answers and ICE candidates will be relayed here ('call.*')
+          // ----- calls -----
+          case 'call.start':
+            return reply({ type: 'ack', ref, ...calls.start(me, device, msg) });
+          case 'call.accept':
+            return reply({ type: 'ack', ref, ...calls.accept(me, device, msg.callId) });
+          case 'call.decline':
+          case 'call.busy':
+            return reply({ type: 'ack', ref, call: calls.decline(me, msg.callId, { busy: msg.type === 'call.busy' }) });
+          case 'call.hangup':
+            return reply({ type: 'ack', ref, call: calls.hangup(me, msg.callId) });
+          case 'call.offer':
+          case 'call.answer':
+          case 'call.ice':
+          case 'call.media':
+            calls.relay(me, msg.type, msg);
+            return ref !== undefined && reply({ type: 'ack', ref });
           default:
-            if (msg.type.startsWith('call.')) return reply({ type: 'error', ref, code: 'calls_not_yet' });
             return reply({ type: 'error', ref, code: 'unknown_type' });
         }
       } catch (e) {
-        if (e instanceof FamilyError) return reply({ type: 'error', ref, code: e.code, status: e.status });
+        if (e instanceof FamilyError) return reply({ type: 'error', ref, code: e.code, status: e.status, ...(e.call ? { call: e.call } : {}) });
         log.error?.(`[ws] ${e.stack || e.message}`);
         return reply({ type: 'error', ref, code: 'server_error' });
       }
@@ -119,6 +143,7 @@ export function attachRealtime(server, { family, hub, log = console }) {
       if (!me) return;
       hub.remove(me.id, ws);
       if (!hub.isOnline(me.id)) presence(me.id, false);
+      calls.socketClosed(me, device.id);
     });
     ws.on('error', () => {});
   });

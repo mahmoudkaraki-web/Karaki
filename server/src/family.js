@@ -17,6 +17,19 @@ export class FamilyError extends Error {
 
 const INVITE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // no 0/O, 1/I/L: easy to read out on the phone
 
+// words for a call line, as the person who did not place the call reads it
+export function callWords(body) {
+  let c = {};
+  try { c = JSON.parse(body || '{}'); } catch { /* old or odd line */ }
+  const what = c.kind === 'video' ? 'video call' : 'voice call';
+  if (c.outcome === 'ended') {
+    const mins = Math.round((c.seconds || 0) / 60);
+    const Cap = what.charAt(0).toUpperCase() + what.slice(1);
+    return mins >= 1 ? `${Cap}, ${mins} min` : `${Cap}, under a minute`;
+  }
+  return `Missed ${what}`;
+}
+
 export function normaliseInviteCode(code) {
   return String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 }
@@ -67,10 +80,14 @@ export function makeFamily({ db, config, hub, push = null, log = console, now = 
       : 0;
     const receipts = {};
     for (const r of rows) receipts[r.member_id] = { delivered: r.delivered_up_to, read: r.read_up_to };
+    const live = one(db, 'SELECT id, kind, started_by FROM calls WHERE chat_id = ? AND ended_at IS NULL', chatId);
+    const activeCall = live
+      ? { id: live.id, kind: live.kind, startedBy: live.started_by, joined: all(db, "SELECT member_id FROM call_members WHERE call_id = ? AND state = 'joined'", live.id).map((r) => r.member_id) }
+      : null;
     return {
       id: c.id, kind: c.kind, title: c.title, createdBy: c.created_by, createdAt: c.created_at, updatedAt: c.updated_at,
       members: rows.map((r) => memberOut({ id: r.member_id, name: r.name, color: r.color, is_admin: r.is_admin, removed_at: r.removed_at })),
-      receipts, unread, last: last ? messageOut(last) : null,
+      receipts, unread, last: last ? messageOut(last) : null, activeCall,
     };
   }
 
@@ -485,6 +502,31 @@ export function makeFamily({ db, config, hub, push = null, log = console, now = 
     return { path: path.join(mediaDir, m.id), mime: m.mime, bytes: m.bytes };
   }
 
+  // ---------- call lines in the chat ("Missed voice call", "Video call, 4 min") ----------
+  // readBy: members who were on the call, for whom the line is not news
+  function insertCallLine(call, outcome, seconds, readBy = []) {
+    const body = JSON.stringify({ callId: call.id, kind: call.kind, outcome, seconds });
+    const id = tx(db, () => {
+      const t = now();
+      const r = run(db, "INSERT INTO messages (chat_id, sender_id, kind, body, created_at) VALUES (?, ?, 'call', ?, ?)", call.chat_id, call.started_by, body, t);
+      const mid = Number(r.lastInsertRowid);
+      run(db, 'UPDATE chats SET updated_at = ? WHERE id = ?', t, call.chat_id);
+      for (const m of new Set([call.started_by, ...readBy])) {
+        run(db, 'UPDATE chat_members SET delivered_up_to = MAX(delivered_up_to, ?), read_up_to = MAX(read_up_to, ?) WHERE chat_id = ? AND member_id = ?', mid, mid, call.chat_id, m);
+      }
+      return mid;
+    });
+    const msg = broadcastMessage(id);
+    announceChat(call.chat_id);
+    if (outcome !== 'ended') {
+      // a missed call is worth a notification to whoever missed it
+      const caller = one(db, 'SELECT * FROM members WHERE id = ?', call.started_by);
+      const chat = one(db, 'SELECT * FROM chats WHERE id = ?', call.chat_id);
+      pushNewMessage(caller, chat, msg, new Set(readBy)).catch((e) => log.error?.(`[push] ${e.message}`));
+    }
+    return msg;
+  }
+
   // ---------- push ----------
   function unreadTotal(memberId) {
     return one(db, `SELECT COUNT(*) AS n FROM messages msg JOIN chat_members cm ON cm.chat_id = msg.chat_id AND cm.member_id = ?
@@ -492,11 +534,11 @@ export function makeFamily({ db, config, hub, push = null, log = console, now = 
                     AND (msg.sender_id IS NULL OR msg.sender_id <> ?)`, memberId, memberId).n;
   }
 
-  async function pushNewMessage(sender, chat, msg) {
+  async function pushNewMessage(sender, chat, msg, skip = new Set()) {
     if (!push) return;
-    const preview = msg.kind === 'photo' ? 'Photo' : msg.kind === 'voice' ? 'Voice note' : msg.body;
+    const preview = msg.kind === 'photo' ? 'Photo' : msg.kind === 'voice' ? 'Voice note' : msg.kind === 'call' ? callWords(msg.body) : msg.body;
     for (const mid of currentMemberIds(chat.id)) {
-      if (mid === sender.id) continue;
+      if (mid === sender.id || skip.has(mid)) continue;
       if (hub.isOnline(mid)) continue; // the open app shows it already
       const devices = all(db, 'SELECT id, push_token FROM devices WHERE member_id = ? AND revoked_at IS NULL AND push_token IS NOT NULL', mid);
       if (!devices.length) continue;
@@ -523,5 +565,7 @@ export function makeFamily({ db, config, hub, push = null, log = console, now = 
     listChats, getChat, openDirect, createGroup, renameGroup, addToGroup, removeFromGroup,
     sendMessage, history, markDelivered, markRead, markAllDelivered, typing,
     saveMedia, mediaFor, unreadTotal,
+    // for the calls module
+    requireChat, currentMemberIds, announceChat, insertCallLine,
   };
 }

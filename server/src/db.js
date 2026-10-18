@@ -80,12 +80,36 @@ CREATE TABLE IF NOT EXISTS messages (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   chat_id     INTEGER NOT NULL REFERENCES chats(id),
   sender_id   INTEGER REFERENCES members(id),  -- NULL for system lines ("Sara added Omar")
-  kind        TEXT NOT NULL CHECK (kind IN ('text', 'photo', 'voice', 'system')),
-  body        TEXT,
+  kind        TEXT NOT NULL CHECK (kind IN ('text', 'photo', 'voice', 'system', 'call')),
+  body        TEXT,              -- for 'call' lines: JSON { callId, kind, outcome, seconds }
   media_id    TEXT REFERENCES media(id),
   client_id   TEXT,              -- the phone's own id, so a resend never makes a double
   created_at  INTEGER NOT NULL
 );
+
+-- calls (phase 2 and 3): one row per call, one row per member asked or joining
+CREATE TABLE IF NOT EXISTS calls (
+  id          TEXT PRIMARY KEY,  -- a UUID: the same id CallKit uses on every phone
+  chat_id     INTEGER NOT NULL REFERENCES chats(id),
+  kind        TEXT NOT NULL CHECK (kind IN ('voice', 'video')),
+  started_by  INTEGER NOT NULL REFERENCES members(id),
+  created_at  INTEGER NOT NULL,
+  answered_at INTEGER,
+  ended_at    INTEGER,
+  end_reason  TEXT               -- ended, missed, declined, busy, cancelled
+);
+
+CREATE TABLE IF NOT EXISTS call_members (
+  call_id     TEXT NOT NULL REFERENCES calls(id),
+  member_id   INTEGER NOT NULL REFERENCES members(id),
+  state       TEXT NOT NULL CHECK (state IN ('ringing', 'joined', 'left', 'declined', 'missed', 'busy')),
+  device_id   INTEGER,           -- the phone that joined, so signalling goes to that phone only
+  joined_at   INTEGER,
+  left_at     INTEGER,
+  PRIMARY KEY (call_id, member_id)
+);
+
+CREATE INDEX IF NOT EXISTS calls_open ON calls(chat_id) WHERE ended_at IS NULL;
 
 CREATE INDEX IF NOT EXISTS messages_by_chat ON messages(chat_id, id);
 CREATE UNIQUE INDEX IF NOT EXISTS messages_client ON messages(sender_id, client_id) WHERE client_id IS NOT NULL;

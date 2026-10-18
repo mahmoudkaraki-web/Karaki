@@ -54,7 +54,9 @@ test('APNs requests carry a signed token, the right topic and push type, and rep
 
   const voip = await send('abc123', { callId: 'x' }, { pushType: 'voip' });
   assert.equal(voip.ok, true);
-  assert.equal(seen[1].headers['apns-topic'], 'com.besmart.karaki.voip', 'phase 2 ringing pushes use the .voip topic');
+  assert.equal(seen[1].headers['apns-topic'], 'com.besmart.karaki.voip', 'ringing pushes use the .voip topic');
+  assert.equal(seen[1].headers['apns-push-type'], 'voip');
+  assert.equal(seen[1].headers['apns-priority'], '10');
 
   const dead = await send('dead', { aps: {} });
   assert.deepEqual(dead, { ok: false, status: 410, reason: 'Unregistered' });
