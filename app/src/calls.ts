@@ -6,6 +6,12 @@
 //
 // Mesh rule, the same as the server's tests: whoever joins sends an offer to everyone already
 // on the call, so two phones never offer to each other at the same time.
+//
+// Video can be switched on and off at any time, in voice calls too: every connection carries a
+// video channel from the start (a transceiver, sending nothing while the camera is off), so the
+// camera button only swaps the track in or out with replaceTrack. No new offer is needed, so
+// there is never a clash of offers in the mesh. Each side tells the others its camera state
+// (call.media), and the call screen shows video only for people whose camera is on.
 import { useSyncExternalStore } from 'react';
 import { Alert } from 'react-native';
 import * as Crypto from 'expo-crypto';
@@ -28,7 +34,7 @@ export type CallView = {
   startedAt: number | null;
   peers: Record<number, PeerView>;
   ringing: number[];        // people still being rung
-  local: MediaStream | null;
+  local: MediaStream | null;  // my camera, for the small preview tile
   muted: boolean;
   speaker: boolean;
   cameraOn: boolean;
@@ -61,7 +67,10 @@ const pcs = new Map<number, RTCPeerConnection>();
 const pendingIce = new Map<number, any[]>();
 const ringingIn = new Map<string, CallInfo>(); // rung on this phone, not answered yet
 let iceServers: any[] = [];
-let localStream: MediaStream | null = null;
+let localStream: MediaStream | null = null; // my microphone
+let camStream: MediaStream | null = null;   // my camera, only while it is on
+const peerStreams = new Map<number, MediaStream>(); // what each person sends me, gathered in one stream
+let callKitHasVideo = false;
 
 const ENDED_WORDS: Record<string, string> = {
   ended: 'Call ended', cancelled: 'Call ended', declined: 'Declined', busy: 'Busy', missed: 'No answer',
@@ -73,33 +82,89 @@ function showCallScreen() {
 
 async function getMedia(kind: 'voice' | 'video') {
   try {
-    const stream = await mediaDevices.getUserMedia({
-      audio: true,
-      video: kind === 'video' ? { facingMode: 'user', width: 640, height: 480, frameRate: 24 } : false,
-    });
-    localStream = stream as MediaStream;
-    patch({ local: localStream });
-    return localStream;
+    localStream = (await mediaDevices.getUserMedia({ audio: true, video: false })) as MediaStream;
   } catch {
-    Alert.alert('Karaki needs the microphone' + (kind === 'video' ? ' and camera' : ''), 'Allow them for Karaki in Settings, then try the call again.');
+    Alert.alert('Karaki needs the microphone', 'Allow it for Karaki in Settings, then try the call again.');
     throw new Error('no_media');
+  }
+  if (kind === 'video') await startCamera().catch(() => {}); // a video call still works as voice if the camera is refused
+  return localStream;
+}
+
+const audioTrack = () => localStream?.getAudioTracks()[0] ?? null;
+const camTrack = () => camStream?.getVideoTracks()[0] ?? null;
+const kindOf = (t: any): string | undefined => t?.receiver?.track?.kind ?? t?.sender?.track?.kind;
+const videoTransceivers = () => [...pcs.values()].flatMap((pc) => pc.getTransceivers().filter((t: any) => kindOf(t) === 'video'));
+
+// the camera on: one track, given to every connection's video channel
+async function startCamera() {
+  if (camStream) return;
+  try {
+    camStream = (await mediaDevices.getUserMedia({
+      audio: false,
+      video: { facingMode: view?.front === false ? 'environment' : 'user', width: 640, height: 480, frameRate: 24 },
+    })) as MediaStream;
+  } catch {
+    Alert.alert('Karaki needs the camera', 'Allow it for Karaki in Settings to turn video on.');
+    throw new Error('no_camera');
+  }
+  const track = camTrack();
+  for (const t of videoTransceivers()) await t.sender.replaceTrack(track).catch(() => {});
+  patch({ cameraOn: true, local: camStream });
+}
+
+// the camera off: every connection's video channel goes quiet, the camera is let go
+async function stopCamera() {
+  for (const t of videoTransceivers()) await t.sender.replaceTrack(null).catch(() => {});
+  camStream?.getTracks().forEach((t) => t.stop());
+  camStream?.release?.();
+  camStream = null;
+  patch({ cameraOn: false, local: null });
+}
+
+function sendMediaState() {
+  if (view) liveSend({ type: 'call.media', callId: view.id, audio: !view.muted, video: view.cameraOn });
+}
+
+// the lock screen and the Phone app say video when anyone on the call has a camera on
+function syncCallKitVideo() {
+  if (!view) return;
+  const any = view.cameraOn || Object.values(view.peers).some((p) => p.video);
+  if (any !== callKitHasVideo) {
+    callKitHasVideo = any;
+    KarakiCalls.setVideo(view.id, any);
   }
 }
 
-function makePc(peerId: number) {
+// offering: true for the side that makes the offer (it sets up the audio and video channels);
+// the answering side takes the channels the offer brings (see call.offer below)
+function makePc(peerId: number, offering: boolean) {
   const callId = view!.id;
   const pc = new RTCPeerConnection({ iceServers });
-  localStream?.getTracks().forEach((t) => pc.addTrack(t, localStream!));
+  if (offering) {
+    const streams = localStream ? [localStream] : [];
+    pc.addTransceiver(audioTrack() ?? 'audio', { direction: 'sendrecv', streams });
+    pc.addTransceiver(camTrack() ?? 'video', { direction: 'sendrecv', streams });
+  }
   pc.addEventListener('icecandidate', (e: any) => {
     if (e.candidate) liveSend({ type: 'call.ice', callId, to: peerId, candidate: typeof e.candidate.toJSON === 'function' ? e.candidate.toJSON() : e.candidate });
   });
   pc.addEventListener('track', (e: any) => {
-    const stream = e.streams?.[0];
-    if (stream) patchPeer(peerId, { stream });
+    // one stream per person, built here, so it never depends on what stream ids the other phone sends
+    const own = peerStreams.get(peerId);
+    if (!own) {
+      const s = new MediaStream([e.track]);
+      peerStreams.set(peerId, s);
+      patchPeer(peerId, { stream: s });
+    } else {
+      own.addTrack(e.track);
+      patchPeer(peerId, { stream: own });
+    }
   });
   pc.addEventListener('connectionstatechange', () => {
     const st = pc.connectionState;
     patchPeer(peerId, { connection: st });
+    if (st === 'connected') sendMediaState(); // tell everyone whether my camera and microphone are on
     if (st === 'connected' && view && view.phase !== 'active') {
       patch({ phase: 'active', startedAt: view.startedAt || Date.now() });
       if (view.direction === 'out') KarakiCalls.reportConnected(view.id);
@@ -111,7 +176,7 @@ function makePc(peerId: number) {
 }
 
 async function offerTo(peerId: number) {
-  const pc = pcs.get(peerId) || makePc(peerId);
+  const pc = pcs.get(peerId) || makePc(peerId, true);
   const offer = await pc.createOffer({});
   await pc.setLocalDescription(offer);
   liveSend({ type: 'call.offer', callId: view!.id, to: peerId, sdp: offer.sdp });
@@ -128,10 +193,13 @@ function dropPeer(memberId: number) {
   pcs.get(memberId)?.close();
   pcs.delete(memberId);
   pendingIce.delete(memberId);
+  try { peerStreams.get(memberId)?.release?.(); } catch { /* already gone */ }
+  peerStreams.delete(memberId);
   if (view) {
     const peers = { ...view.peers };
     delete peers[memberId];
     setView({ ...view, peers });
+    syncCallKitVideo();
   }
 }
 
@@ -143,6 +211,12 @@ function finish(words: string) {
   localStream?.getTracks().forEach((t) => t.stop());
   localStream?.release?.();
   localStream = null;
+  camStream?.getTracks().forEach((t) => t.stop());
+  camStream?.release?.();
+  camStream = null;
+  for (const s of peerStreams.values()) { try { s.release?.(); } catch { /* already gone */ } }
+  peerStreams.clear();
+  callKitHasVideo = false;
   if (ringingIn.size === 0) setKeepLive(false);
   if (!view) return;
   const id = view.id;
@@ -162,7 +236,7 @@ export async function startCall(chatId: number, kind: 'voice' | 'video') {
   setView({
     id: callId, chatId, kind, title, group: chat.kind === 'group', direction: 'out', phase: 'ringing', startedAt: null,
     peers: {}, ringing: chat.members.filter((m) => m.id !== me.id).map((m) => m.id), local: null,
-    muted: false, speaker: kind === 'video', cameraOn: kind === 'video', front: true,
+    muted: false, speaker: kind === 'video', cameraOn: false, front: true,
   });
   setKeepLive(true);
   showCallScreen();
@@ -193,7 +267,7 @@ export async function joinCall(callId: string) {
   const title = chatTitle(chat, me.id);
   setView({
     id: callId, chatId: chat.id, kind, title, group: chat.kind === 'group', direction: 'out', phase: 'connecting', startedAt: null,
-    peers: {}, ringing: [], local: null, muted: false, speaker: kind === 'video', cameraOn: kind === 'video', front: true,
+    peers: {}, ringing: [], local: null, muted: false, speaker: kind === 'video', cameraOn: false, front: true,
   });
   setKeepLive(true);
   showCallScreen();
@@ -223,7 +297,7 @@ async function onAnswer(info: CallInfo) {
   setView({
     id: info.callId, chatId: Number(known.chatId), kind, title: known.title || 'Karaki', group: !!known.group, direction: 'in',
     phase: 'connecting', startedAt: null, peers: {}, ringing: [], local: null,
-    muted: false, speaker: kind === 'video', cameraOn: kind === 'video', front: true,
+    muted: false, speaker: kind === 'video', cameraOn: false, front: true,
   });
   setKeepLive(true);
   showCallScreen();
@@ -253,7 +327,7 @@ function onIncoming(info: CallInfo) {
     setView({
       id: info.callId, chatId: Number(info.chatId), kind: info.kind === 'video' ? 'video' : 'voice', title: info.title || 'Karaki',
       group: !!info.group, direction: 'in', phase: 'ringing', startedAt: null, peers: {}, ringing: [], local: null,
-      muted: false, speaker: info.kind === 'video', cameraOn: info.kind === 'video', front: true,
+      muted: false, speaker: info.kind === 'video', cameraOn: false, front: true,
     });
     showCallScreen();
   }
@@ -293,7 +367,7 @@ export function answerHere() {
 function applyMute(muted: boolean) {
   localStream?.getAudioTracks().forEach((t) => { t.enabled = !muted; });
   patch({ muted });
-  if (view) liveSend({ type: 'call.media', callId: view.id, audio: !muted, video: view.cameraOn });
+  sendMediaState();
 }
 
 export function toggleMute() {
@@ -309,18 +383,30 @@ export function toggleSpeaker() {
   patch({ speaker: !view.speaker });
 }
 
-export function toggleCamera() {
-  if (!view || view.kind !== 'video') return;
-  const cameraOn = !view.cameraOn;
-  localStream?.getVideoTracks().forEach((t) => { t.enabled = cameraOn; });
-  patch({ cameraOn });
-  liveSend({ type: 'call.media', callId: view.id, audio: !view.muted, video: cameraOn });
+// works in voice calls too: turning the camera on makes it a video call for everyone, and off
+// goes back to the voice layout once nobody is sending video
+let cameraBusy = false;
+export async function toggleCamera() {
+  if (!view || view.phase === 'ended' || cameraBusy) return;
+  cameraBusy = true;
+  try {
+    if (view.cameraOn) await stopCamera();
+    else {
+      await startCamera();
+      // like FaceTime: video goes to the loudspeaker
+      if (view && !view.speaker) { KarakiCalls.setSpeaker(true); patch({ speaker: true }); }
+    }
+    sendMediaState();
+    syncCallKitVideo();
+  } catch { /* the camera was refused; an alert said so */ } finally {
+    cameraBusy = false;
+  }
 }
 
 export async function flipCamera() {
-  if (!view || view.kind !== 'video') return;
+  if (!view || !view.cameraOn) return;
   const front = !view.front;
-  const track: any = localStream?.getVideoTracks()[0];
+  const track: any = camTrack();
   if (!track) return;
   try { await track.applyConstraints({ facingMode: front ? 'user' : 'environment' }); } catch { track._switchCamera?.(); }
   patch({ front });
@@ -387,8 +473,15 @@ async function onServer(ev: any) {
   if (!view || ev.callId !== view.id || view.phase === 'ended') return;
   try {
     if (ev.type === 'call.offer') {
-      const pc = pcs.get(ev.from) || makePc(ev.from);
+      const pc = pcs.get(ev.from) || makePc(ev.from, false);
       await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: ev.sdp }));
+      // the offer brought an audio and a video channel: send on both (video stays empty while my camera is off)
+      for (const t of pc.getTransceivers() as any[]) {
+        const kind = kindOf(t);
+        if (kind !== 'audio' && kind !== 'video') continue;
+        if (t.direction !== 'sendrecv') t.direction = 'sendrecv';
+        await t.sender.replaceTrack(kind === 'audio' ? audioTrack() : camTrack()).catch(() => {});
+      }
       await flushIce(ev.from);
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
@@ -404,6 +497,7 @@ async function onServer(ev: any) {
       dropPeer(ev.memberId);
     } else if (ev.type === 'call.media') {
       patchPeer(ev.from, { audio: ev.audio, video: ev.video });
+      syncCallKitVideo();
     }
   } catch { /* one bad message does not end the call */ }
 }

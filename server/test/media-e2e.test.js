@@ -165,3 +165,103 @@ test('three phones form a full mesh through the server, the third joining a runn
   for (const p of [pa, pb, pc]) await p.close();
   await a.close(); await b.close(); await c.close();
 });
+
+// The app's way of switching video on and off mid call (src/calls.ts): the offer always carries
+// an audio and an empty video channel; the camera is swapped in and out with replaceTrack, with
+// no new offer, so there is no clash of offers in the mesh.
+test('video switched on and off in a voice call, both sides, with no new offer', async () => {
+  const chat = (await t.api('POST', '/chats/direct', { token: mak.token, body: { memberId: omar.member.id } })).data.chat;
+  const a = await connect(t.base, mak.token);
+  const c = await connect(t.base, omar.token);
+  let callId = null;
+  let offersRelayed = 0;
+  const videoIn = { a: 0, c: 0 };
+
+  function side(client, name) {
+    const pc = new RTCPeerConnection({ iceServers: [] });
+    const mic = new MediaStreamTrack({ kind: 'audio' });
+    let peerId = null;
+    const pending = [];
+    pc.onicecandidate = ({ candidate }) => { if (candidate && peerId) client.send({ type: 'call.ice', callId, to: peerId, candidate: candidate.toJSON() }); };
+    pc.ontrack = ({ track }) => { if (track.kind === 'video') track.onReceiveRtp.subscribe(() => { videoIn[name] += 1; }); };
+    client.ws.on('message', async (raw) => {
+      const ev = JSON.parse(raw.toString());
+      if (ev.callId !== callId) return;
+      if (ev.type === 'call.offer') {
+        offersRelayed += 1;
+        peerId = ev.from;
+        await pc.setRemoteDescription({ type: 'offer', sdp: ev.sdp });
+        // the answering side takes the offer's channels and sends on both, video empty for now
+        for (const tr of pc.getTransceivers()) {
+          tr.setDirection('sendrecv');
+          if (tr.kind === 'audio') await tr.sender.replaceTrack(mic);
+        }
+        for (const cand of pending.splice(0)) await pc.addIceCandidate(cand);
+        await pc.setLocalDescription(await pc.createAnswer());
+        client.send({ type: 'call.answer', callId, to: ev.from, sdp: pc.localDescription.sdp });
+      } else if (ev.type === 'call.answer') {
+        await pc.setRemoteDescription({ type: 'answer', sdp: ev.sdp });
+        for (const cand of pending.splice(0)) await pc.addIceCandidate(cand);
+      } else if (ev.type === 'call.ice') {
+        if (pc.remoteDescription) await pc.addIceCandidate(ev.candidate); else pending.push(ev.candidate);
+      }
+    });
+    return {
+      pc,
+      async offer(to) {
+        peerId = to;
+        pc.addTransceiver(mic, { direction: 'sendrecv' });
+        pc.addTransceiver('video', { direction: 'sendrecv' }); // the empty video channel
+        await pc.setLocalDescription(await pc.createOffer());
+        client.send({ type: 'call.offer', callId, to, sdp: pc.localDescription.sdp });
+      },
+      // the camera button: a track in (or out) of the video channel, nothing else
+      async camera(on) {
+        const tr = pc.getTransceivers().find((x) => x.kind === 'video');
+        if (!on) { await tr.sender.replaceTrack(null); return null; }
+        const cam = new MediaStreamTrack({ kind: 'video' });
+        await tr.sender.replaceTrack(cam);
+        return { cam, pt: tr.codecs[0].payloadType };
+      },
+    };
+  }
+
+  const pa = side(a, 'a');
+  const pc_ = side(c, 'c');
+  const start = await a.request({ type: 'call.start', chatId: chat.id, kind: 'voice' });
+  callId = start.call.id;
+  await c.waitFor((e) => e.type === 'call.ring');
+  const acc = await c.request({ type: 'call.accept', callId });
+  await pc_.offer(acc.peers[0]);
+  await until(() => pa.pc.connectionState === 'connected' && pc_.pc.connectionState === 'connected', 15000, 'voice call connected');
+
+  const frames = async (cam, pt, n = 20) => {
+    for (let i = 0; i < n; i++) {
+      cam.writeRtp(new RtpPacket(new RtpHeader({ payloadType: pt, sequenceNumber: 5000 + i, timestamp: 3000 * i, ssrc: 777 + pt, marker: true }), Buffer.from([0x90, 0x80, i & 0x7f, 0x10, 0, 0, 0, 0])));
+      await sleep(5);
+    }
+  };
+
+  // MAK turns his camera on: Omar gets video
+  const macCam = await pa.camera(true);
+  const notify = await a.request({ type: 'call.media', callId, audio: true, video: true });
+  assert.equal(notify.type, 'ack');
+  const told = await c.waitFor((e) => e.type === 'call.media' && e.from === mak.member.id);
+  assert.equal(told.video, true, 'Omar is told MAK\'s camera is on');
+  await frames(macCam.cam, macCam.pt);
+  await until(() => videoIn.c > 0, 10000, 'video reaching Omar');
+
+  // Omar turns his on too, then MAK turns his off
+  const omarCam = await pc_.camera(true);
+  await frames(omarCam.cam, omarCam.pt);
+  await until(() => videoIn.a > 0, 10000, 'video reaching MAK');
+  await pa.camera(false);
+  a.send({ type: 'call.media', callId, audio: true, video: false });
+  assert.equal((await c.waitFor((e) => e.type === 'call.media' && e.from === mak.member.id && e.video === false)).video, false);
+
+  assert.equal(offersRelayed, 1, 'only the first offer ever: switching video needed no renegotiation');
+  assert.equal(pa.pc.connectionState, 'connected');
+  await a.request({ type: 'call.hangup', callId });
+  await pa.pc.close(); await pc_.pc.close();
+  await a.close(); await c.close();
+});
