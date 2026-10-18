@@ -1,0 +1,23 @@
+# systemd service for the Karaki server (Linux). Copy to /etc/systemd/system/karaki.service, then:
+#   sudo systemctl daemon-reload && sudo systemctl enable --now karaki
+[Unit]
+Description=Karaki family server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=karaki
+WorkingDirectory=/opt/karaki/server
+ExecStart=/usr/bin/node --env-file=/opt/karaki/server/.env src/index.js
+Restart=always
+RestartSec=3
+# the server only needs its own data folder and the push key
+ReadWritePaths=/var/lib/karaki
+ProtectSystem=strict
+ProtectHome=true
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

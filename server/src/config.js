@@ -1,9 +1,26 @@
 // Settings come from the environment (or an env file passed with node --env-file).
 // Nothing secret lives in the repo: the APNs key is a file path, the data folder is outside git.
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+
+// APNS_KEY_PATH may name the .p8 file itself or the folder it sits in (MAK keeps it in
+// "Karaki APP\Push Key"). In a folder, the one AuthKey_XXXXXXXXXX.p8 there is used, and when
+// APNS_KEY_ID is not set the key id is taken from that file NAME (the contents are not looked at here).
+export function resolveApnsKey(keyPath, keyId) {
+  if (!keyPath) return { keyPath: '', keyId: keyId || '' };
+  let file = keyPath;
+  try {
+    if (fs.statSync(keyPath).isDirectory()) {
+      const found = fs.readdirSync(keyPath).filter((f) => /^AuthKey_[A-Z0-9]{10}\.p8$/.test(f));
+      file = found.length === 1 ? path.join(keyPath, found[0]) : '';
+    }
+  } catch { /* missing: push stays off and the log says so */ }
+  const fromName = /AuthKey_([A-Z0-9]{10})\.p8$/.exec(path.basename(file || ''));
+  return { keyPath: file || keyPath, keyId: keyId || (fromName ? fromName[1] : '') };
+}
 
 function num(v, fallback) {
   const n = Number(v);
@@ -18,14 +35,13 @@ export function loadConfig(env = process.env) {
     port: num(env.PORT, 4100),
     dataDir: path.resolve(env.DATA_DIR || path.join(here, '..', 'data')),
     publicUrl: env.PUBLIC_URL || 'http://localhost:4100',
-    bundleId: env.APPLE_BUNDLE_ID || 'com.besmart.family',
+    bundleId: env.APPLE_BUNDLE_ID || 'com.besmart.karaki',
     // Sign in with Apple: tokens are checked against Apple's published keys
     appleJwksUrl: env.APPLE_JWKS_URL || 'https://appleid.apple.com/auth/keys',
     appleIssuer: 'https://appleid.apple.com',
-    // APNs token auth: MAK places the .p8 file and sets these three; push is off until then
+    // APNs token auth: MAK places the .p8 file and points APNS_KEY_PATH at it; push is off until then
     apns: {
-      keyPath: env.APNS_KEY_PATH || '',
-      keyId: env.APNS_KEY_ID || '',
+      ...resolveApnsKey(env.APNS_KEY_PATH || '', env.APNS_KEY_ID || ''),
       teamId: env.APNS_TEAM_ID || '5TV89KGJVR',
       production: env.APNS_PRODUCTION === '1' || env.APNS_PRODUCTION === 'true',
       showPreview: env.PUSH_PREVIEW !== '0', // 0 hides message text on the lock screen

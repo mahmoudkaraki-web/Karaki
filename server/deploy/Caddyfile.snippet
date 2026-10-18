@@ -1,0 +1,9 @@
+# Add to the box's Caddyfile. Caddy gets and renews the HTTPS certificate by itself and passes
+# the live socket (/ws) through without anything extra.
+karaki.besmart-me.com {
+	encode gzip
+	request_body {
+		max_size 20MB
+	}
+	reverse_proxy 127.0.0.1:4100
+}

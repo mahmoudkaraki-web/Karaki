@@ -1,0 +1,64 @@
+{
+  "expo": {
+    "name": "Karaki",
+    "slug": "karaki",
+    "owner": "mahmoudkarakis-team",
+    "version": "0.1.0",
+    "scheme": "karaki",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "bundleIdentifier": "com.besmart.karaki",
+      "supportsTablet": false,
+      "usesAppleSignIn": true,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "CFBundleDisplayName": "Karaki",
+        "NSMicrophoneUsageDescription": "Karaki uses the microphone to record voice notes for the family.",
+        "NSCameraUsageDescription": "Karaki uses the camera to take photos to send to the family.",
+        "NSPhotoLibraryUsageDescription": "Karaki opens your photos so you can send one to the family."
+      }
+    },
+    "plugins": [
+      "expo-apple-authentication",
+      [
+        "expo-notifications",
+        {
+          "mode": "production"
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Karaki uses the microphone to record voice notes for the family."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Karaki opens your photos so you can send one to the family.",
+          "cameraPermission": "Karaki uses the camera to take photos to send to the family.",
+          "microphonePermission": false
+        }
+      ],
+      "expo-secure-store",
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "backgroundColor": "#F5F0E7",
+          "imageWidth": 160,
+          "dark": {
+            "image": "./assets/splash-icon.png",
+            "backgroundColor": "#15130F"
+          }
+        }
+      ]
+    ],
+    "extra": {
+      "serverUrl": "https://karaki.besmart-me.com"
+    }
+  }
+}

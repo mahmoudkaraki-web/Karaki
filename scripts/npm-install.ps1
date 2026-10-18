@@ -1,6 +1,6 @@
 # Installs packages for one part of the family app without breaking the node_modules junction (18 Oct 2026).
 # The repo sits in OneDrive; each part's node_modules is a junction to
-# C:\dev\nm\BeSmart APPs - BeSmart APPs\family-app\<part>\node_modules so OneDrive never syncs it.
+# C:\dev\nm\Karaki APP\family-app\<part>\node_modules so OneDrive never syncs it.
 # npm (install and ci alike) replaces a junction with a real folder, so the install runs in the
 # C:\dev\nm folder itself and only package.json and package-lock.json travel back and forth.
 #
@@ -14,7 +14,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $repo = Join-Path (Split-Path $PSScriptRoot -Parent) $Part
-$nmHome = Join-Path 'C:\dev\nm\BeSmart APPs - BeSmart APPs\family-app' $Part
+$nmHome = Join-Path 'C:\dev\nm\Karaki APP\family-app' $Part
 $link = Join-Path $repo 'node_modules'
 
 New-Item -ItemType Directory -Force (Join-Path $nmHome 'node_modules') | Out-Null

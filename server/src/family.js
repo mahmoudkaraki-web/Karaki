@@ -68,7 +68,7 @@ export function makeFamily({ db, config, hub, push = null, log = console, now = 
     const receipts = {};
     for (const r of rows) receipts[r.member_id] = { delivered: r.delivered_up_to, read: r.read_up_to };
     return {
-      id: c.id, kind: c.kind, title: c.title, createdBy: c.created_by, updatedAt: c.updated_at,
+      id: c.id, kind: c.kind, title: c.title, createdBy: c.created_by, createdAt: c.created_at, updatedAt: c.updated_at,
       members: rows.map((r) => memberOut({ id: r.member_id, name: r.name, color: r.color, is_admin: r.is_admin, removed_at: r.removed_at })),
       receipts, unread, last: last ? messageOut(last) : null,
     };
@@ -125,7 +125,7 @@ export function makeFamily({ db, config, hub, push = null, log = console, now = 
     const r = run(db, `INSERT INTO invites (code_hash, created_by, name_hint, is_admin, created_at, expires_at)
                        VALUES (?, ?, ?, ?, ?, ?)`,
       sha256Hex(normaliseInviteCode(code)), byMember ? byMember.id : null, cleanText(nameHint, L.nameChars) || null, isAdmin ? 1 : 0, t, expiresAt);
-    return { id: Number(r.lastInsertRowid), code, link: `family://join/${code}`, expiresAt, nameHint: cleanText(nameHint, L.nameChars) || null };
+    return { id: Number(r.lastInsertRowid), code, link: `karaki://join/${code}`, expiresAt, nameHint: cleanText(nameHint, L.nameChars) || null };
   }
 
   function findOpenInvite(code) {

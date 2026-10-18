@@ -46,7 +46,7 @@ test('an admin makes an invite in the app; a non admin cannot', async () => {
   assert.equal(mak.status, 200, 'a known member signs in again without any invite');
   const inv = await t.api('POST', '/invites', { token: mak.data.token, body: { nameHint: 'Sara' } });
   assert.equal(inv.status, 200);
-  assert.match(inv.data.link, /^family:\/\/join\/[A-Z2-9]{4}-[A-Z2-9]{4}$/);
+  assert.match(inv.data.link, /^karaki:\/\/join\/[A-Z2-9]{4}-[A-Z2-9]{4}$/);
 
   const sara = await signIn('apple-sara', { inviteCode: inv.data.code.replace('-', ' ') });
   assert.equal(sara.status, 200);
