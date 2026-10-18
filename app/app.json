@@ -58,7 +58,10 @@
       ]
     ],
     "extra": {
-      "serverUrl": "https://karaki.besmart-me.com"
+      "serverUrl": "https://karaki.besmart-me.com",
+      "eas": {
+        "projectId": "40fee61d-c85c-4af2-ab95-be2c0e87c1a0"
+      }
     }
   }
 }

@@ -3,9 +3,11 @@
 # The key file stays in s2-guest-app\Keys (ignored by git there); only its PATH is passed,
 # its content is never read here.
 #
-#   .\ios-build.ps1             build and send to TestFlight
-#   .\ios-build.ps1 -NoSubmit   build only
-param([switch]$NoSubmit)
+#   .\ios-build.ps1               build and send to TestFlight
+#   .\ios-build.ps1 -NoSubmit     build only
+#   .\ios-build.ps1 -Interactive  the very first build: EAS asks a few questions (answer yes) to make the
+#                                 provisioning profile for com.besmart.karaki; after that the plain command is enough
+param([switch]$NoSubmit, [switch]$Interactive)
 Set-Location $PSScriptRoot
 $ErrorActionPreference = 'Stop'
 $env:EXPO_ASC_API_KEY_PATH = 'C:\Users\mahmo\OneDrive - Be Smart Me\BeSmart APPs - BeSmart APPs\s2-guest-app\Keys\AuthKey_ZNP8WSPSSW.p8'
@@ -26,5 +28,7 @@ if (-not ($app.expo.extra -and $app.expo.extra.eas -and $app.expo.extra.eas.proj
   npx eas-cli@latest init --non-interactive --force
 }
 
-if ($NoSubmit) { npx eas-cli@latest build --platform ios --profile production --non-interactive }
-else { npx eas-cli@latest build --platform ios --profile production --non-interactive --auto-submit }
+$buildArgs = @('eas-cli@latest', 'build', '--platform', 'ios', '--profile', 'production')
+if (-not $Interactive) { $buildArgs += '--non-interactive' }
+if (-not $NoSubmit) { $buildArgs += '--auto-submit' }
+npx @buildArgs
