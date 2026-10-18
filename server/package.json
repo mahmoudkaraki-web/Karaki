@@ -1,0 +1,22 @@
+{
+  "name": "family-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Family: the private server for messages between family members (phase 1)",
+  "type": "module",
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "invite": "node scripts/invite.js",
+    "test": "node --test --test-concurrency=1 \"test/*.test.js\""
+  },
+  "dependencies": {
+    "express": "^5.3.0",
+    "jose": "^6.2.12",
+    "multer": "^2.4.0",
+    "ws": "^8.22.0"
+  }
+}

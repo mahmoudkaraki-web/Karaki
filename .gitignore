@@ -1,0 +1,27 @@
+node_modules/
+.DS_Store
+*.ipa
+
+# server data and secrets: never in git
+server/data/
+server/.env
+*.env.local
+*.sqlite
+*.sqlite-*
+*.db
+
+# Expo
+app/.expo/
+app/dist/
+app/expo-env.d.ts
+app/ios/
+app/android/
+
+# signing keys, API keys, certificates, profiles
+*.p8
+*.p12
+*.key
+*.pem
+*.mobileprovision
+*.cer
+Keys/
